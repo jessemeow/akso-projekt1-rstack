@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <inttypes.h>
+#include <errno.h>
 
 typedef struct rstack rstack_t;
 
@@ -20,5 +21,8 @@ bool      rstack_empty(rstack_t *rs);
 result_t  rstack_front(rstack_t *rs);
 rstack_t* rstack_read(char const *path);
 int       rstack_write(char const *path, rstack_t *rs);
+
+void rstack_cleaner(rstack_t *rs);
+result_t result_empty_new();
 
 #endif

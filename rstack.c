@@ -170,11 +170,3 @@ result_t rstack_front(rstack_t *rs) {
 rstack_t* rstack_read(char const *path);
 
 int rstack_write(char const *path, rstack_t *rs);
-
-
-int main(void) {
-    rstack_t *rs1 = rstack_new();
-    rstack_push_rstack(rs1, rstack_new());
-    rstack_delete(rs1);
-
-}
