@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <ctype.h>
 // todo: check libraries
+// todo: reformat into files? - reformat style, - add "_helper" to helper function names - const values
 
 typedef struct rstack rstack_t;
 
@@ -115,7 +116,7 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
 
     rstack_node_t *new_node = (rstack_node_t*)malloc(sizeof(rstack_node_t));
     if (new_node == nullptr) {
-        errno = ENOMEM;
+        errno = ENOMEM; // todo: errno already set?
         return -1;
     }
 
@@ -216,6 +217,10 @@ result_t rstack_front(rstack_t *rs) {
     return result;
 }
 
+bool is_number(int character) {
+    return (character >= '0' && character <= '9');
+}
+
 result_t read_number_from_file(FILE *file_ptr) {
     result_t result;
     result.flag = true;
@@ -225,7 +230,7 @@ result_t read_number_from_file(FILE *file_ptr) {
 
     int character = fgetc(file_ptr);
 
-    while (character != EOF && result.flag == true && character >= 0 && character <= 9) {
+    while (character != EOF && result.flag == true && is_number(character)) {
         if (number_result > (UINT64_MAX - character) / 10) {
             result.flag = false;
             errno = ERANGE;
@@ -267,19 +272,26 @@ rstack_t* rstack_read(char const *path) {
             }
         }
         else {
-            if (character >= 0 && character <= 9) {
+            if (is_number(character)) {
+                if (ungetc(character, file_ptr) == EOF) { // Blad
+                    errno = EIO;
+                    fclose(file_ptr);
+                    rstack_delete(rs);
+                    return nullptr;
+                }
+
                 result_t number_result = read_number_from_file(file_ptr);
 
                 if (number_result.flag == true) {
                     rstack_push_value(rs, number_result.value);
                 }
-                else {
+                else { // Blad, errno ustawione przy wczytywaniu liczby
                     fclose(file_ptr);
                     rstack_delete(rs);
                     return nullptr;
                 }
             }
-            else { // Znaleziono bledny znak.
+            else { // Znaleziono bledny znak (Blad).
                 errno = EINVAL;
                 fclose(file_ptr);
                 rstack_delete(rs);
@@ -288,8 +300,47 @@ rstack_t* rstack_read(char const *path) {
         }
         character = fgetc(file_ptr);
     }
+
+    return rs;
 }
 
+void rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
+    rstack_node_t *current = rs->head;
+
+    while (current != nullptr && current->is_visited == false) {
+        current->is_visited = true;
+
+        if (current->is_stack == false) {
+            fprintf(file_ptr, "%lu\n", current->value.num_value);
+        }
+        else {
+            rstack_write_helper(file_ptr, current->value.stack_value);
+        }
+    }
+}
+
+// todo: what if no numbers in stack? - error if cycle detected? - "a" mode, create new file if path doesnt exist?
 int rstack_write(char const *path, rstack_t *rs) {
-    
+    if (rs == nullptr || rs->head == nullptr) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (path == nullptr) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    FILE *file_ptr = fopen(path, "w"); // todo: is "w" correct?
+
+    if (file_ptr == nullptr) {
+        errno = ENOENT; // todo: correct errno? check for rstack_read too
+        return -1;
+    }
+
+    rstack_write_helper(file_ptr, rs);
+    reset_visited(rs);
+    fclose(file_ptr);
+
+    return 0;
 }
