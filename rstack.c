@@ -7,6 +7,10 @@
 // todo: check libraries
 // todo: reformat into files? - reformat style, - add "_helper" to helper function names - const values
 
+#define CYCLE_DETECTED 1
+#define FUNCTION_FAIL (-1)
+#define FUNCTION_SUCCESS 0
+
 typedef struct rstack rstack_t;
 
 typedef struct rstack_node {
@@ -41,7 +45,7 @@ void reset_visited(rstack_t *rs) {
     if (rs != nullptr) {
         rstack_node_t *current = rs->head;
 
-        while (current != nullptr && current->is_visited == true) {
+        while (current != nullptr) {
             current->is_visited = false;
 
             if (current->is_stack == true) {
@@ -57,9 +61,8 @@ void reset_visited(rstack_t *rs) {
 void rstack_cleaner(rstack_t *rs) {
     if (rs != nullptr) {
         rstack_node_t *current = rs->head;
-        while (current != nullptr && current->is_visited == false) {
-            current->is_visited = true;
 
+        while (current != nullptr) {
             if (current->is_stack == true) {
                 rstack_delete(current->value.stack_value);
             }
@@ -68,8 +71,6 @@ void rstack_cleaner(rstack_t *rs) {
             current = current->next;
             free(node_to_be_deleted);
         }
-
-        reset_visited(rs);
     }
 }
 
@@ -91,13 +92,13 @@ void rstack_delete(rstack_t *rs) {
 int rstack_push_value(rstack_t *rs, uint64_t value) {
     if (rs == nullptr) {
         errno = EINVAL;
-        return -1;
+        return FUNCTION_FAIL;
     }
 
     rstack_node_t *new_node = (rstack_node_t*)malloc(sizeof(rstack_node_t));
     if (new_node == nullptr) {
         errno = ENOMEM;
-        return -1;
+        return FUNCTION_FAIL;
     }
 
     new_node->is_stack = false;
@@ -105,19 +106,19 @@ int rstack_push_value(rstack_t *rs, uint64_t value) {
     new_node->value.num_value = value;
     new_node->next = rs->head;
     rs->head = new_node;
-    return 0;
+    return FUNCTION_SUCCESS;
 }
 
 int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
     if (rs1 == nullptr || rs2 == nullptr) {
         errno = EINVAL;
-        return -1;
+        return FUNCTION_FAIL;
     }
 
     rstack_node_t *new_node = (rstack_node_t*)malloc(sizeof(rstack_node_t));
     if (new_node == nullptr) {
         errno = ENOMEM; // todo: errno already set?
-        return -1;
+        return FUNCTION_FAIL;
     }
 
     rs2->ref_count++;
@@ -129,7 +130,7 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
 
     rs1->head = new_node;
 
-    return 0;
+    return FUNCTION_SUCCESS;
 }
 
 void rstack_pop(rstack_t *rs) {
@@ -231,15 +232,21 @@ result_t read_number_from_file(FILE *file_ptr) {
     int character = fgetc(file_ptr);
 
     while (character != EOF && result.flag == true && is_number(character)) {
-        if (number_result > (UINT64_MAX - character) / 10) {
+        uint64_t digit = character - '0';
+
+        if (number_result > (UINT64_MAX - digit) / 10) {
             result.flag = false;
             errno = ERANGE;
         }
         else {
             number_result *= 10;
-            number_result += character;
+            number_result += digit;
             character = fgetc(file_ptr);
         }
+    }
+
+    if (character != EOF) {
+        ungetc(character, file_ptr);
     }
 
     if (result.flag == true) {
@@ -301,46 +308,78 @@ rstack_t* rstack_read(char const *path) {
         character = fgetc(file_ptr);
     }
 
+    fclose(file_ptr);
+
     return rs;
 }
 
-void rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
+// -1 if blad, 0 wpp
+int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
+    if (rs == nullptr) {
+        return FUNCTION_SUCCESS;
+    }
+
     rstack_node_t *current = rs->head;
 
-    while (current != nullptr && current->is_visited == false) {
+    while (current != nullptr) {
+        if (current->is_visited == true) {
+            return CYCLE_DETECTED;
+        }
+
         current->is_visited = true;
 
         if (current->is_stack == false) {
-            fprintf(file_ptr, "%lu\n", current->value.num_value);
+            if (fprintf(file_ptr, "%lu\n", current->value.num_value) < 0) {
+                errno = EIO;
+                return FUNCTION_FAIL;
+            }
         }
         else {
-            rstack_write_helper(file_ptr, current->value.stack_value);
+            int function_result = rstack_write_helper(file_ptr, current->value.stack_value);
+            if (function_result != FUNCTION_SUCCESS) {
+                return function_result;
+            }
         }
     }
+
+    return FUNCTION_SUCCESS;
 }
 
-// todo: what if no numbers in stack? - error if cycle detected? - "a" mode, create new file if path doesnt exist?
+// todo: error if cycle detected? - "a" mode, create new file if path doesnt exist?
 int rstack_write(char const *path, rstack_t *rs) {
-    if (rs == nullptr || rs->head == nullptr) {
+    if (rs == nullptr) {
         errno = EINVAL;
-        return -1;
+        return FUNCTION_FAIL;
     }
 
     if (path == nullptr) {
         errno = ENOENT;
-        return -1;
+        return FUNCTION_FAIL;
     }
 
-    FILE *file_ptr = fopen(path, "w"); // todo: is "w" correct?
-
+    FILE *file_ptr = fopen(path, "w");
     if (file_ptr == nullptr) {
         errno = ENOENT; // todo: correct errno? check for rstack_read too
-        return -1;
+        return FUNCTION_FAIL;
     }
 
-    rstack_write_helper(file_ptr, rs);
     reset_visited(rs);
-    fclose(file_ptr);
 
-    return 0;
+    if (fclose(file_ptr) != FUNCTION_SUCCESS) {
+        return FUNCTION_FAIL;
+    }
+
+    int function_result = rstack_write_helper(file_ptr, rs);
+    if (function_result != FUNCTION_SUCCESS) {
+        return FUNCTION_FAIL; // fails if cycle detected
+    }
+
+    return FUNCTION_SUCCESS;
+}
+
+int main() {
+    char const *path = "/home/jesse/CLionProjects/akso-projekt1-rstack/textfile.txt";
+    rstack_t *rs = rstack_read(path);
+    rstack_delete(rs);
+    return FUNCTION_SUCCESS;
 }
