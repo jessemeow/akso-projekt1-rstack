@@ -1,11 +1,16 @@
 #include "rstack.h"
 #include <stdlib.h>
+#include <errno.h>
 #include <stdio.h>
+#include <assert.h>
+#include <ctype.h>
+// todo: check libraries
 
 typedef struct rstack rstack_t;
 
 typedef struct rstack_node {
     bool is_stack;
+    bool is_visited;
     union {
         uint64_t num_value;
         rstack_t *stack_value;
@@ -19,7 +24,7 @@ typedef struct rstack {
 } rstack_t;
 
 
-rstack_t *rstack_new() {
+[[nodiscard]]rstack_t *rstack_new() { // todo: czy mozna uzywac atrybutow?
     rstack_t *rstack = (rstack_t*)malloc(sizeof(rstack_t));
     if (rstack == nullptr) {
         errno = ENOMEM;
@@ -31,38 +36,53 @@ rstack_t *rstack_new() {
     return rstack;
 }
 
+void reset_visited(rstack_t *rs) {
+    if (rs != nullptr) {
+        rstack_node_t *current = rs->head;
+
+        while (current != nullptr && current->is_visited == true) {
+            current->is_visited = false;
+
+            if (current->is_stack == true) {
+                reset_visited(current->value.stack_value);
+            }
+
+            current = current->next;
+        }
+    }
+}
+
 // todo: change function name
 void rstack_cleaner(rstack_t *rs) {
     if (rs != nullptr) {
         rstack_node_t *current = rs->head;
-        while (current != nullptr) {
+        while (current != nullptr && current->is_visited == false) {
+            current->is_visited = true;
+
             if (current->is_stack == true) {
-                rstack_t *current_stack = current->value.stack_value;
-                (current_stack->ref_count)--;
-
-                if (current_stack->ref_count <= 0) {
-                    rstack_delete(current_stack);
-                }
-
-                current = current->next;
+                rstack_delete(current->value.stack_value);
             }
-            else { // Numerical value
-                rstack_node_t *node_to_be_deleted = current;
-                current = current->next;
-                free(node_to_be_deleted);
-            }
+
+            rstack_node_t *node_to_be_deleted = current;
+            current = current->next;
+            free(node_to_be_deleted);
         }
+
+        reset_visited(rs);
     }
 }
 
 // todo: handle cycles
 void rstack_delete(rstack_t *rs) {
-    printf("i\n");
     if (rs != nullptr) {
         rs->ref_count--;
-        rstack_cleaner(rs);
-        if (rs != nullptr) { // rs może zostać usunięty w rstack_cleaner
-            free(rs);
+
+        if (rs->ref_count == 0) {
+            rstack_cleaner(rs);
+
+            if (rs != nullptr) { // rs może zostać usunięty w rstack_cleaner
+                free(rs);
+            }
         }
     }
 }
@@ -80,6 +100,7 @@ int rstack_push_value(rstack_t *rs, uint64_t value) {
     }
 
     new_node->is_stack = false;
+    new_node->is_visited = false;
     new_node->value.num_value = value;
     new_node->next = rs->head;
     rs->head = new_node;
@@ -101,6 +122,7 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
     rs2->ref_count++;
 
     new_node->is_stack = true;
+    new_node->is_visited = false;
     new_node->value.stack_value = rs2;
     new_node->next = rs1->head;
 
@@ -110,6 +132,22 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
 }
 
 void rstack_pop(rstack_t *rs) {
+    if (rs != nullptr && rs->head != nullptr) {
+        rstack_node_t *node_to_be_deleted = rs->head;
+        rstack_node_t *next_node = node_to_be_deleted->next;
+
+        if (node_to_be_deleted == next_node) {
+            next_node = nullptr;
+        }
+
+        if (node_to_be_deleted->is_stack == true) {
+            rstack_delete(node_to_be_deleted->value.stack_value);
+        }
+
+        free(node_to_be_deleted);
+
+        rs->head = next_node;
+    }
 }
 
 bool rstack_empty(rstack_t *rs) {
@@ -119,18 +157,23 @@ bool rstack_empty(rstack_t *rs) {
 
     rstack_node_t *current = rs->head;
 
-    while (current != nullptr) {
+    while (current != nullptr && current->is_visited == false) {
+        current->is_visited = true;
+
         if (current->is_stack == false) {
+            reset_visited(rs);
             return false;
         }
 
         if (rstack_empty(current->value.stack_value) == false) {
+            reset_visited(rs);
             return false;
         }
 
         current = current->next;
     }
 
+    reset_visited(rs);
     return true;
 }
 
@@ -148,25 +191,105 @@ result_t rstack_front(rstack_t *rs) {
     }
 
     rstack_node_t *current = rs->head;
-    while (current != nullptr) {
+
+    while (current != nullptr && current->is_visited == false) {
+        current->is_visited = true;
+
         if (current->is_stack == false) {
             result_t result;
             result.flag = true;
             result.value = current->value.num_value;
+            reset_visited(rs);
             return result;
         }
 
         result_t current_result = rstack_front(current->value.stack_value);
         if (current_result.flag == true) {
+            reset_visited(rs);
             return current_result;
         }
         current = current->next;
     }
 
     result_t result = result_empty_new();
+    reset_visited(rs);
     return result;
 }
 
-rstack_t* rstack_read(char const *path);
+result_t read_number_from_file(FILE *file_ptr) {
+    result_t result;
+    result.flag = true;
+    result.value = 0;
 
-int rstack_write(char const *path, rstack_t *rs);
+    uint64_t number_result = 0;
+
+    int character = fgetc(file_ptr);
+
+    while (character != EOF && result.flag == true && character >= 0 && character <= 9) {
+        if (number_result > (UINT64_MAX - character) / 10) {
+            result.flag = false;
+            errno = ERANGE;
+        }
+        else {
+            number_result *= 10;
+            number_result += character;
+            character = fgetc(file_ptr);
+        }
+    }
+
+    if (result.flag == true) {
+        result.value = number_result;
+    }
+
+    return result;
+}
+
+rstack_t* rstack_read(char const *path) {
+    FILE *file_ptr = fopen(path, "r");
+
+    if (file_ptr == nullptr) {
+        errno = ENOENT;
+        return nullptr;
+    }
+
+    rstack_t *rs = rstack_new();
+
+    if (rs == nullptr) {
+        fclose(file_ptr);
+        return nullptr;
+    }
+
+    int character = fgetc(file_ptr);
+    while (character != EOF) {
+        if (isspace(character)) {
+            while (isspace(character)) {
+                character = fgetc(file_ptr);
+            }
+        }
+        else {
+            if (character >= 0 && character <= 9) {
+                result_t number_result = read_number_from_file(file_ptr);
+
+                if (number_result.flag == true) {
+                    rstack_push_value(rs, number_result.value);
+                }
+                else {
+                    fclose(file_ptr);
+                    rstack_delete(rs);
+                    return nullptr;
+                }
+            }
+            else { // Znaleziono bledny znak.
+                errno = EINVAL;
+                fclose(file_ptr);
+                rstack_delete(rs);
+                return nullptr;
+            }
+        }
+        character = fgetc(file_ptr);
+    }
+}
+
+int rstack_write(char const *path, rstack_t *rs) {
+    
+}

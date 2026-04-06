@@ -276,12 +276,14 @@ static int do_test(int (*function)(void)) {
   return result;
 }
 
-int main(int argc, char *argv[]) {
-  if (argc == 2)
-    for (size_t i = 0; i < SIZE(test_list); ++i)
-      if (strcmp(argv[1], test_list[i].name) == 0)
-        return do_test(test_list[i].function);
 
-  fprintf(stderr, "Użycie:\n%s nazwa_testu\n", argv[0]);
-  return WRONG_TEST;
+
+int main(int argc, char *argv[]) {
+   if (argc == 2)
+     for (size_t i = 0; i < SIZE(test_list); ++i)
+       if (strcmp(argv[1], test_list[i].name) == 0)
+         return do_test(test_list[i].function);
+
+   fprintf(stderr, "Użycie:\n%s nazwa_testu\n", argv[0]);
+   return WRONG_TEST;
 }
