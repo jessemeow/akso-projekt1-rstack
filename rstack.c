@@ -313,7 +313,6 @@ rstack_t* rstack_read(char const *path) {
     return rs;
 }
 
-// -1 if blad, 0 wpp
 int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
     if (rs == nullptr) {
         return FUNCTION_SUCCESS;
