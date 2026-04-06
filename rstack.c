@@ -74,7 +74,6 @@ void rstack_cleaner(rstack_t *rs) {
     }
 }
 
-// todo: handle cycles
 void rstack_delete(rstack_t *rs) {
     if (rs != nullptr) {
         rs->ref_count--;
@@ -339,6 +338,8 @@ int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
                 return function_result;
             }
         }
+
+        current = current->next;
     }
 
     return FUNCTION_SUCCESS;
@@ -362,23 +363,69 @@ int rstack_write(char const *path, rstack_t *rs) {
         return FUNCTION_FAIL;
     }
 
+    int function_result = rstack_write_helper(file_ptr, rs);
+    if (function_result != FUNCTION_SUCCESS) {
+        return FUNCTION_FAIL; // fails if cycle detected
+    }
+
     reset_visited(rs);
 
     if (fclose(file_ptr) != FUNCTION_SUCCESS) {
         return FUNCTION_FAIL;
     }
 
-    int function_result = rstack_write_helper(file_ptr, rs);
-    if (function_result != FUNCTION_SUCCESS) {
-        return FUNCTION_FAIL; // fails if cycle detected
-    }
-
     return FUNCTION_SUCCESS;
 }
 
+
+////
+// To są możliwe wyniki testu.
+#define PASS 0
+#define FAIL 1
+#define WRONG_TEST 2
+
+// Oblicza liczbę elementów tablicy x.
+#define SIZE(x) (sizeof x / sizeof x[0])
+
+#define ASSERT(f)            \
+do {                       \
+if (!(f))                \
+return FAIL;           \
+} while (0)
+
+#define ASSERT_RESULT(c, f, ...)          \
+do {                                    \
+result_t r = c;                       \
+if (r.flag != (f))                    \
+return FAIL;                        \
+if ((f) && r.value != __VA_ARGS__ -0) \
+return FAIL;                        \
+} while (0)
+
+#define CHECK_IF_NO_ERROR(f) \
+do {                       \
+if ((f) != 0)            \
+return FAIL;           \
+} while (0)
+
+#define V(code, where) (((unsigned long)code) << (3 * where))
+////
+////
+static int zero(void) {
+    rstack_t *rs0 = rstack_new();
+    assert(rs0);
+
+    ASSERT(rstack_empty(rs0) == true);
+    ASSERT_RESULT(rstack_front(rs0), false);
+    CHECK_IF_NO_ERROR(rstack_write("file_zero.out", rs0));
+    rstack_delete(rs0);
+
+    return PASS;
+}
+////
+
+
 int main() {
-    char const *path = "/home/jesse/CLionProjects/akso-projekt1-rstack/textfile.txt";
-    rstack_t *rs = rstack_read(path);
-    rstack_delete(rs);
+    zero();
     return FUNCTION_SUCCESS;
 }
