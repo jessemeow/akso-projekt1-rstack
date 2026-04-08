@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <ctype.h>
 // todo: check libraries
-// todo: reformat into files? - reformat style, - add "_helper" to helper function names - const values
+// todo: reformat into files - reformat style, - add "_helper" to helper function names - const vals
 
 #define CYCLE_DETECTED 1
 #define FUNCTION_FAIL (-1)
@@ -37,7 +37,7 @@ typedef struct rstack {
     }
 
     rstack->head = nullptr;
-    rstack->ref_count = 1; // todo: co jesli wartosc funkcji nie jest przypisana do zmiennej?
+    rstack->ref_count = 1;
     return rstack;
 }
 
@@ -46,10 +46,12 @@ void reset_visited(rstack_t *rs) {
         rstack_node_t *current = rs->head;
 
         while (current != nullptr) {
-            current->is_visited = false;
+            if (current->is_visited == true) {
+                current->is_visited = false;
 
-            if (current->is_stack == true) {
-                reset_visited(current->value.stack_value);
+                if (current->is_stack == true) {
+                    reset_visited(current->value.stack_value);
+                }
             }
 
             current = current->next;
@@ -69,6 +71,7 @@ void rstack_cleaner(rstack_t *rs) {
 
             rstack_node_t *node_to_be_deleted = current;
             current = current->next;
+            rs->head = current;
             free(node_to_be_deleted);
         }
     }
@@ -80,10 +83,7 @@ void rstack_delete(rstack_t *rs) {
 
         if (rs->ref_count == 0) {
             rstack_cleaner(rs);
-
-            if (rs != nullptr) { // rs może zostać usunięty w rstack_cleaner
-                free(rs);
-            }
+            free(rs);
         }
     }
 }
