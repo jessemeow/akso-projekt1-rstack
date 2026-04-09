@@ -151,34 +151,39 @@ void rstack_pop(rstack_t *rs) {
     }
 }
 
-bool rstack_empty(rstack_t *rs) {
+bool rstack_empty_helper(rstack_t *rs) {
     if (rs == nullptr) {
         return true;
     }
 
     rstack_node_t *current = rs->head;
 
-    while (current != nullptr && current->is_visited == false) {
-        current->is_visited = true;
-
-        if (current->is_stack == false) {
-            reset_visited(rs);
+    while (current != nullptr) {
+        if (current->is_stack == false) { // wartoscia wezla jest wartosc liczbowa
             return false;
         }
 
-        if (rstack_empty(current->value.stack_value) == false) {
-            reset_visited(rs);
-            return false;
+        if (current->is_visited == false) { // wartoscia wezla jest stos
+            current->is_visited = true;
+
+            if (rstack_empty_helper(current->value.stack_value) == false) {
+                return false;
+            }
         }
 
         current = current->next;
     }
 
-    reset_visited(rs);
     return true;
 }
 
-result_t result_empty_new() {
+bool rstack_empty(rstack_t *rs) {
+    bool result = rstack_empty_helper(rs);
+    reset_visited(rs);
+    return result;
+}
+
+result_t result_new_empty() {
     result_t result;
     result.flag = false;
     result.value = 0;
@@ -187,7 +192,7 @@ result_t result_empty_new() {
 
 result_t rstack_front(rstack_t *rs) {
     if (rs == nullptr) {
-        result_t result = result_empty_new();
+        result_t result = result_new_empty();
         return result;
     }
 
@@ -212,7 +217,7 @@ result_t rstack_front(rstack_t *rs) {
         current = current->next;
     }
 
-    result_t result = result_empty_new();
+    result_t result = result_new_empty();
     reset_visited(rs);
     return result;
 }
@@ -377,55 +382,18 @@ int rstack_write(char const *path, rstack_t *rs) {
     return FUNCTION_SUCCESS;
 }
 
+int main(void) {
+    rstack_t *rs1 = rstack_new();
+    //rstack_t *rs2 = rstack_new();
+    //rstack_t *rs3 = rstack_new();
 
-////
-// To są możliwe wyniki testu.
-#define PASS 0
-#define FAIL 1
-#define WRONG_TEST 2
+    rstack_push_rstack(rs1, rs1);
+    //rstack_push_rstack(rs1, rs2);
+    //rstack_push_rstack(rs1, rs3);
+    //rstack_push_rstack(rs1, rs3);
 
-// Oblicza liczbę elementów tablicy x.
-#define SIZE(x) (sizeof x / sizeof x[0])
-
-#define ASSERT(f)            \
-do {                       \
-if (!(f))                \
-return FAIL;           \
-} while (0)
-
-#define ASSERT_RESULT(c, f, ...)          \
-do {                                    \
-result_t r = c;                       \
-if (r.flag != (f))                    \
-return FAIL;                        \
-if ((f) && r.value != __VA_ARGS__ -0) \
-return FAIL;                        \
-} while (0)
-
-#define CHECK_IF_NO_ERROR(f) \
-do {                       \
-if ((f) != 0)            \
-return FAIL;           \
-} while (0)
-
-#define V(code, where) (((unsigned long)code) << (3 * where))
-////
-////
-static int zero(void) {
-    rstack_t *rs0 = rstack_new();
-    assert(rs0);
-
-    ASSERT(rstack_empty(rs0) == true);
-    ASSERT_RESULT(rstack_front(rs0), false);
-    CHECK_IF_NO_ERROR(rstack_write("file_zero.out", rs0));
-    rstack_delete(rs0);
-
-    return PASS;
-}
-////
-
-
-int main() {
-    zero();
-    return FUNCTION_SUCCESS;
+    rstack_delete(rs1);
+    //rstack_delete(rs2);
+    //rstack_delete(rs3);
+    return 0;
 }
