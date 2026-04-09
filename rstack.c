@@ -29,8 +29,75 @@ typedef struct rstack {
 } rstack_t;
 
 
+typedef struct garbage_collector_node {
+    rstack_t *node;
+    struct garbage_collector_node *next;
+    bool reachable;
+} garbage_collector_node_t;
+
+typedef struct garbage_collector {
+    garbage_collector_node_t *head;
+} garbage_collector_t;
+
+
+// garbage collector
+
+garbage_collector_t *garbage_collector_new() {
+    garbage_collector_t *gc = (garbage_collector_t*)malloc(sizeof(garbage_collector_t));
+
+    if (gc == nullptr) {
+        errno = ENOMEM;
+        return nullptr;
+    }
+
+    gc->head = nullptr;
+
+    return gc;
+}
+
+garbage_collector_node_t *garbage_collector_new_node(rstack_t *rs) {
+    if (rs == nullptr) {
+        errno = EINVAL;
+        return nullptr;
+    }
+
+    garbage_collector_node_t *gc_node = (garbage_collector_node_t*)malloc(sizeof(garbage_collector_node_t));
+
+    if (gc_node == nullptr) {
+        errno = ENOMEM;
+        return nullptr;
+    }
+
+    gc_node->node = rs;
+    gc_node->next = nullptr;
+    gc_node->reachable = false; // todo: ???
+
+    return gc_node;
+}
+
+int garbage_collector_push_rstack(garbage_collector_t *gc, rstack_t *rs) {
+    if (rs == nullptr || gc == nullptr) {
+        errno = EINVAL;
+        return FUNCTION_FAIL;
+    }
+
+    garbage_collector_node_t *gc_node = garbage_collector_new_node(rs);
+
+    if (gc_node == nullptr) {
+        return FUNCTION_FAIL;
+    }
+
+    garbage_collector_node_t *current = gc->head;
+    gc_node->next = current;
+
+    
+}
+
+// rstack
+
 [[nodiscard]]rstack_t *rstack_new() { // todo: czy mozna uzywac atrybutow?
     rstack_t *rstack = (rstack_t*)malloc(sizeof(rstack_t));
+
     if (rstack == nullptr) {
         errno = ENOMEM;
         return nullptr;
