@@ -7,9 +7,9 @@
 // todo: check libraries
 // todo: reformat into files - reformat style, - add "_helper" to helper function names - const vals
 
-#define CYCLE_DETECTED 1
 #define FUNCTION_FAIL (-1)
 #define FUNCTION_SUCCESS 0
+#define CYCLE_DETECTED 1
 
 typedef struct rstack rstack_t;
 
@@ -89,8 +89,17 @@ int garbage_collector_push_rstack(garbage_collector_t *gc, rstack_t *rs) {
 
     garbage_collector_node_t *current = gc->head;
     gc_node->next = current;
+    gc->head = gc_node;
 
-    
+    return FUNCTION_SUCCESS;
+}
+
+int initialise_garbage_collection(garbage_collector_t *gc) {
+    if (gc == nullptr) {
+        return FUNCTION_FAIL; // todo: fail or success?
+    }
+
+
 }
 
 // rstack
