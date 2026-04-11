@@ -1,5 +1,7 @@
 #include "rgarbage_collector.h"
 
+// todo: consts
+
 typedef struct garbage_collector_node {
     rstack_t *node;
     struct garbage_collector_node *next;
@@ -26,6 +28,8 @@ typedef struct rstack {
     bool reachable;
     rstack_node_t *head;
 } rstack_t;
+
+extern garbage_collector_t *global_gc;
 
 garbage_collector_t *gc_new() {
     garbage_collector_t *gc = (garbage_collector_t*)malloc(sizeof(garbage_collector_t));
@@ -87,6 +91,7 @@ bool rstack_is_root(rstack_t *rs) {
     return false;
 }
 
+// todo: actually call this tho
 void gc_reset(garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
@@ -109,7 +114,7 @@ void gc_reset(garbage_collector_t *gc) {
 
 // todo: result return value?
 void gc_find_roots(garbage_collector_t *gc) {
-    if (gc != nullptr) {
+    if (gc == nullptr) {
         return;
     }
 
@@ -171,6 +176,103 @@ void gc_mark(garbage_collector_t *gc) {
     gc_find_reachable(gc);
 }
 
-void gc_sweep(garbage_collector_t *gc) {
-    
+void rstack_cleaner(rstack_t *rs) {
+    if (rs != nullptr) {
+        rstack_node_t *current = rs->head;
+
+        while (current != nullptr) {
+            if (current->is_stack == true) {
+                current->value.stack_value->internal_ref_count--;
+                current->value.stack_value->ref_count--;
+            }
+
+            rstack_node_t *node_to_be_deleted = current;
+            current = current->next;
+            rs->head = current;
+            free(node_to_be_deleted);
+        }
+    }
 }
+
+void gc_remove_rstack(garbage_collector_node_t *gc_node) {
+    if (gc_node == nullptr) {
+        return;
+    }
+
+    rstack_t *rs = gc_node->node;
+    rstack_cleaner(rs);
+    free(rs);
+    free(gc_node);
+}
+
+void gc_sweep(garbage_collector_t *gc) {
+    if (gc == nullptr) {
+        return;
+    }
+
+    garbage_collector_node_t *current = gc->head;
+    garbage_collector_node_t *previous = nullptr;
+
+    while (current != nullptr) {
+        rstack_t *rs = current->node;
+
+        if (rs != nullptr) {
+            if (rs->reachable) {
+                previous = current;
+                current = current->next;
+            }
+            else {
+                if (previous != nullptr) {
+                    previous->next = current->next;
+                }
+                else {
+                    gc->head = current->next;
+                }
+
+                garbage_collector_node_t *node_to_be_deleted = current;
+                current = current->next;
+                gc_remove_rstack(node_to_be_deleted);
+            }
+        }
+        else {
+            current = current->next;
+        }
+    }
+}
+
+bool gc_is_empty(garbage_collector_t *gc) {
+    if (gc == nullptr) {
+        return false;
+    }
+
+    if (gc->head == nullptr) {
+        return true;
+    }
+
+    return false;
+}
+
+void gc_clear(void) {
+    if (global_gc != nullptr) {
+        garbage_collector_node_t *current = global_gc->head;
+
+        while (current != nullptr) {
+            garbage_collector_node_t *next = current->next;
+            free(current);
+            current = next;
+        }
+
+        free(global_gc);
+    }
+}
+
+void gc_mark_and_sweep(garbage_collector_t *gc) {
+    if (gc == nullptr) {
+        return;
+    }
+
+    gc_mark(gc);
+    gc_sweep(gc);
+    gc_reset(gc);
+}
+
