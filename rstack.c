@@ -40,16 +40,6 @@ typedef struct garbage_collector {
     garbage_collector_node_t *head;
 } garbage_collector_t;
 
-
-typedef struct vm_node {
-    struct vm_node *previous;
-    struct vm_node *next;
-} vm_node_t;
-
-typedef struct vm {
-    vm_node_t *head;
-} vm_t;
-
 // garbage collector TODO!
 
 garbage_collector_t *gc_new() {
@@ -105,7 +95,11 @@ int gc_push_rstack(garbage_collector_t *gc, rstack_t *rs) {
 }
 
 // todo: result return value?
-garbage_collector_t *gc_get_roots(vm_t *vm) {
+int *gc_find_roots(garbage_collector_t *gc) {
+    if (gc == nullptr) {
+        return FUNCTION_SUCCESS; //todo: ???
+    }
+
 
 }
 
@@ -229,6 +223,7 @@ void rstack_pop(rstack_t *rs) {
         }
 
         if (node_to_be_deleted->is_stack == true) {
+            node_to_be_deleted->value.stack_value->internal_ref_count--;
             rstack_delete(node_to_be_deleted->value.stack_value);
         }
 
