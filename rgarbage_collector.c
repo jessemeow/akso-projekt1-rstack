@@ -181,7 +181,7 @@ void rstack_cleaner(rstack_t *rs) {
         rstack_node_t *current = rs->head;
 
         while (current != nullptr) {
-            if (current->is_stack == true) {
+            if (current->is_stack == true) { // segfault A->B->A
                 current->value.stack_value->internal_ref_count--;
                 current->value.stack_value->ref_count--;
             }
