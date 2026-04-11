@@ -9,10 +9,6 @@
 // todo: check libraries
 // todo: reformat into files - reformat style, - add "_helper" to helper function names - const vals
 
-#define FUNCTION_FAIL (-1)
-#define FUNCTION_SUCCESS 0
-#define CYCLE_DETECTED 1
-
 typedef struct rstack rstack_t;
 
 typedef struct rstack_node {
@@ -28,12 +24,25 @@ typedef struct rstack_node {
 typedef struct rstack {
     uint64_t ref_count;
     uint64_t internal_ref_count;
+    bool reachable;
     rstack_node_t *head;
 } rstack_t;
 
-// rstack
+garbage_collector_t *global_gc = nullptr;
 
-[[nodiscard]]rstack_t *rstack_new() { // todo: czy mozna uzywac atrybutow?
+// todo: fix - DONT TREAT CYCLES AS ERRORS
+
+rstack_t *rstack_new() { // todo: czy mozna uzywac atrybutow?
+    if (global_gc == nullptr) {
+        global_gc = gc_new();
+
+        if (global_gc == nullptr) {
+            return nullptr;
+        }
+
+        atexit(gc_clear);
+    }
+
     rstack_t *rstack = (rstack_t*)malloc(sizeof(rstack_t));
 
     if (rstack == nullptr) {
@@ -41,9 +50,16 @@ typedef struct rstack {
         return nullptr;
     }
 
+    if (gc_push_rstack(global_gc, rstack) == FUNCTION_FAIL) {
+        free(rstack);
+        errno = ENOMEM;
+        return nullptr;
+    }
+
     rstack->head = nullptr;
     rstack->ref_count = 1;
     rstack->internal_ref_count = 0;
+    rstack->reachable = false;
     return rstack;
 }
 
@@ -67,32 +83,11 @@ void reset_visited(rstack_t *rs) {
 
 // todo: change function name
 // todo: internal ref count
-void rstack_cleaner(rstack_t *rs) {
-    if (rs != nullptr) {
-        rstack_node_t *current = rs->head;
-
-        while (current != nullptr) {
-            if (current->is_stack == true) {
-                current->value.stack_value->internal_ref_count--; //todo: is ok?
-                rstack_delete(current->value.stack_value);
-            }
-
-            rstack_node_t *node_to_be_deleted = current;
-            current = current->next;
-            rs->head = current;
-            free(node_to_be_deleted);
-        }
-    }
-}
 
 void rstack_delete(rstack_t *rs) {
     if (rs != nullptr) {
         rs->ref_count--;
-
-        if (rs->ref_count == 0) { // todo: replace with gc
-            rstack_cleaner(rs);
-            free(rs);
-        }
+        gc_mark_and_sweep(global_gc);
     }
 }
 
@@ -336,7 +331,7 @@ int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
 
     while (current != nullptr) {
         if (current->is_visited == true) {
-            return CYCLE_DETECTED;
+            return FUNCTION_SUCCESS; // Wykryto cykl.
         }
 
         current->is_visited = true;
