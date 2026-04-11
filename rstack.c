@@ -24,7 +24,8 @@ typedef struct rstack_node {
 } rstack_node_t;
 
 typedef struct rstack {
-    long ref_count;
+    uint64_t ref_count;
+    uint64_t internal_ref_count;
     rstack_node_t *head;
 } rstack_t;
 
@@ -40,9 +41,18 @@ typedef struct garbage_collector {
 } garbage_collector_t;
 
 
-// garbage collector
+typedef struct vm_node {
+    struct vm_node *previous;
+    struct vm_node *next;
+} vm_node_t;
 
-garbage_collector_t *garbage_collector_new() {
+typedef struct vm {
+    vm_node_t *head;
+} vm_t;
+
+// garbage collector TODO!
+
+garbage_collector_t *gc_new() {
     garbage_collector_t *gc = (garbage_collector_t*)malloc(sizeof(garbage_collector_t));
 
     if (gc == nullptr) {
@@ -55,7 +65,7 @@ garbage_collector_t *garbage_collector_new() {
     return gc;
 }
 
-garbage_collector_node_t *garbage_collector_new_node(rstack_t *rs) {
+garbage_collector_node_t *gc_new_node(rstack_t *rs) {
     if (rs == nullptr) {
         errno = EINVAL;
         return nullptr;
@@ -75,13 +85,13 @@ garbage_collector_node_t *garbage_collector_new_node(rstack_t *rs) {
     return gc_node;
 }
 
-int garbage_collector_push_rstack(garbage_collector_t *gc, rstack_t *rs) {
+int gc_push_rstack(garbage_collector_t *gc, rstack_t *rs) {
     if (rs == nullptr || gc == nullptr) {
         errno = EINVAL;
         return FUNCTION_FAIL;
     }
 
-    garbage_collector_node_t *gc_node = garbage_collector_new_node(rs);
+    garbage_collector_node_t *gc_node = gc_new_node(rs);
 
     if (gc_node == nullptr) {
         return FUNCTION_FAIL;
@@ -94,11 +104,8 @@ int garbage_collector_push_rstack(garbage_collector_t *gc, rstack_t *rs) {
     return FUNCTION_SUCCESS;
 }
 
-int initialise_garbage_collection(garbage_collector_t *gc) {
-    if (gc == nullptr) {
-        return FUNCTION_FAIL; // todo: fail or success?
-    }
-
+// todo: result return value?
+garbage_collector_t *gc_get_roots(vm_t *vm) {
 
 }
 
@@ -114,6 +121,7 @@ int initialise_garbage_collection(garbage_collector_t *gc) {
 
     rstack->head = nullptr;
     rstack->ref_count = 1;
+    rstack->internal_ref_count = 0;
     return rstack;
 }
 
@@ -136,12 +144,14 @@ void reset_visited(rstack_t *rs) {
 }
 
 // todo: change function name
+// todo: internal ref count
 void rstack_cleaner(rstack_t *rs) {
     if (rs != nullptr) {
         rstack_node_t *current = rs->head;
 
         while (current != nullptr) {
             if (current->is_stack == true) {
+                current->value.stack_value->internal_ref_count--; //todo: is ok?
                 rstack_delete(current->value.stack_value);
             }
 
@@ -157,7 +167,7 @@ void rstack_delete(rstack_t *rs) {
     if (rs != nullptr) {
         rs->ref_count--;
 
-        if (rs->ref_count == 0) {
+        if (rs->ref_count == 0) { // todo: replace with gc
             rstack_cleaner(rs);
             free(rs);
         }
@@ -197,6 +207,7 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
     }
 
     rs2->ref_count++;
+    rs2->internal_ref_count++;
 
     new_node->is_stack = true;
     new_node->is_visited = false;
@@ -460,16 +471,16 @@ int rstack_write(char const *path, rstack_t *rs) {
 
 int main(void) {
     rstack_t *rs1 = rstack_new();
-    //rstack_t *rs2 = rstack_new();
+    rstack_t *rs2 = rstack_new();
     //rstack_t *rs3 = rstack_new();
 
-    rstack_push_rstack(rs1, rs1);
-    //rstack_push_rstack(rs1, rs2);
+    rstack_push_rstack(rs1, rs2);
+    rstack_push_rstack(rs2, rs1);
     //rstack_push_rstack(rs1, rs3);
     //rstack_push_rstack(rs1, rs3);
 
     rstack_delete(rs1);
-    //rstack_delete(rs2);
+    rstack_delete(rs2);
     //rstack_delete(rs3);
     return 0;
 }
