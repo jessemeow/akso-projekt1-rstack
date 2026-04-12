@@ -12,6 +12,9 @@ typedef struct garbage_collector {
     garbage_collector_node_t *head;
 } garbage_collector_t;
 
+garbage_collector_t global_gc_instance = { .head = nullptr };
+garbage_collector_t *global_gc = &global_gc_instance;
+
 typedef struct rstack_node {
     bool is_stack;
     bool is_visited;

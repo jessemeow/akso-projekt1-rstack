@@ -28,7 +28,7 @@ typedef struct rstack {
     rstack_node_t *head;
 } rstack_t;
 
-garbage_collector_t *global_gc = nullptr;
+extern garbage_collector_t *global_gc;
 
 // todo: fix - DONT TREAT CYCLES AS ERRORS
 
@@ -40,7 +40,7 @@ rstack_t *rstack_new() {
             return nullptr;
         }
 
-        atexit(gc_clear);
+        //satexit(gc_clear);
     }
 
     rstack_t *rstack = (rstack_t*)malloc(sizeof(rstack_t));
@@ -142,14 +142,14 @@ void rstack_pop(rstack_t *rs) {
             next_node = nullptr;
         }
 
+        rs->head = next_node;
+
         if (node_to_be_deleted->is_stack == true) {
             node_to_be_deleted->value.stack_value->internal_ref_count--;
             rstack_delete(node_to_be_deleted->value.stack_value);
         }
 
         free(node_to_be_deleted);
-
-        rs->head = next_node;
     }
 }
 
@@ -371,6 +371,7 @@ int rstack_write(char const *path, rstack_t *rs) {
 
     int function_result = rstack_write_helper(file_ptr, rs);
     if (function_result == FUNCTION_FAIL) {
+        fclose(file_ptr);
         return FUNCTION_FAIL;
     }
 
@@ -381,4 +382,13 @@ int rstack_write(char const *path, rstack_t *rs) {
     }
 
     return FUNCTION_SUCCESS;
+}
+
+int main() {
+    rstack_t *rs1 = rstack_new();
+    rstack_t *rs2 = rstack_new();
+    rstack_push_rstack(rs1, rs2);
+    rstack_push_rstack(rs2, rs1);
+    rstack_delete(rs1);
+    rstack_delete(rs2);
 }
