@@ -319,7 +319,7 @@ rstack_t* rstack_read(char const *path) {
     return rs;
 }
 
-int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
+int rstack_write_helper(FILE *file_ptr, rstack_t *rs) { // wrong order
     if (rs == nullptr) {
         return FUNCTION_SUCCESS;
     }
@@ -384,11 +384,32 @@ int rstack_write(char const *path, rstack_t *rs) {
     return FUNCTION_SUCCESS;
 }
 
-int main() {
+static int wojtekmal_0(void) {
+    rstack_t *rs0 = rstack_new();
     rstack_t *rs1 = rstack_new();
     rstack_t *rs2 = rstack_new();
+
+    rstack_push_value(rs0, 3);
+    rstack_push_value(rs0, 2);
+    rstack_push_value(rs0, 1);
+    rstack_push_rstack(rs0, rs1);
+
+    rstack_push_value(rs1, 5);
     rstack_push_rstack(rs1, rs2);
+    rstack_push_value(rs1, 4);
+
     rstack_push_rstack(rs2, rs1);
+    rstack_push_value(rs2, 6);
+
+    rstack_write("w.out", rs0);
+
+    rstack_delete(rs0);
     rstack_delete(rs1);
     rstack_delete(rs2);
+
+    return true;
+}
+
+int main() {
+    wojtekmal_0();
 }
