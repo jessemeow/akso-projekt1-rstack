@@ -32,7 +32,7 @@ garbage_collector_t *global_gc = nullptr;
 
 // todo: fix - DONT TREAT CYCLES AS ERRORS
 
-rstack_t *rstack_new() { // todo: czy mozna uzywac atrybutow?
+rstack_t *rstack_new() {
     if (global_gc == nullptr) {
         global_gc = gc_new();
 
@@ -80,9 +80,6 @@ void reset_visited(rstack_t *rs) {
         }
     }
 }
-
-// todo: change function name
-// todo: internal ref count
 
 void rstack_delete(rstack_t *rs) {
     if (rs != nullptr) {
@@ -355,7 +352,6 @@ int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
     return FUNCTION_SUCCESS;
 }
 
-// todo: error if cycle detected? - "a" mode, create new file if path doesnt exist?
 int rstack_write(char const *path, rstack_t *rs) {
     if (rs == nullptr) {
         errno = EINVAL;
@@ -374,8 +370,8 @@ int rstack_write(char const *path, rstack_t *rs) {
     }
 
     int function_result = rstack_write_helper(file_ptr, rs);
-    if (function_result != FUNCTION_SUCCESS) {
-        return FUNCTION_FAIL; // fails if cycle detected
+    if (function_result == FUNCTION_FAIL) {
+        return FUNCTION_FAIL;
     }
 
     reset_visited(rs);
@@ -385,20 +381,4 @@ int rstack_write(char const *path, rstack_t *rs) {
     }
 
     return FUNCTION_SUCCESS;
-}
-
-int main(void) {
-    rstack_t *rs1 = rstack_new();
-    rstack_t *rs2 = rstack_new();
-    //rstack_t *rs3 = rstack_new();
-
-    rstack_push_rstack(rs1, rs2);
-    rstack_push_rstack(rs2, rs1);
-    //rstack_push_rstack(rs1, rs3);
-    //rstack_push_rstack(rs1, rs3);
-
-    rstack_delete(rs1);
-    rstack_delete(rs2);
-    //rstack_delete(rs3);
-    return 0;
 }

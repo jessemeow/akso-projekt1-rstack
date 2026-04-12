@@ -177,35 +177,53 @@ void gc_mark(garbage_collector_t *gc) {
 }
 
 void rstack_cleaner(rstack_t *rs) {
-    if (rs != nullptr) {
-        rstack_node_t *current = rs->head;
+    if (rs == nullptr) {
+        return;
+    }
 
-        while (current != nullptr) {
-            if (current->is_stack == true) { // segfault A->B->A
-                current->value.stack_value->internal_ref_count--;
-                current->value.stack_value->ref_count--;
-            }
+    rstack_node_t *current = rs->head;
 
-            rstack_node_t *node_to_be_deleted = current;
-            current = current->next;
-            rs->head = current;
-            free(node_to_be_deleted);
+    while (current != nullptr) {
+        if (current->is_stack == true) { // segfault A->B->A
+            current->value.stack_value->internal_ref_count--;
+            current->value.stack_value->ref_count--;
         }
+
+        rstack_node_t *node_to_be_deleted = current;
+        current = current->next;
+        rs->head = current;
+        free(node_to_be_deleted);
     }
 }
 
-void gc_remove_rstack(garbage_collector_node_t *gc_node) {
+void gc_clean_node(garbage_collector_node_t *gc_node) {
     if (gc_node == nullptr) {
         return;
     }
 
     rstack_t *rs = gc_node->node;
     rstack_cleaner(rs);
-    free(rs);
-    free(gc_node);
 }
 
-void gc_sweep(garbage_collector_t *gc) {
+void gc_rstack_cleaner(garbage_collector_t *gc) {
+    if (gc == nullptr) {
+        return;
+    }
+
+    garbage_collector_node_t *current = gc->head;
+
+    while (current != nullptr) {
+        rstack_t *rs = current->node;
+
+        if (rs != nullptr && rs->reachable == false) {
+            gc_clean_node(current);
+        }
+
+        current = current->next;
+    }
+}
+
+void gc_rstack_removal(garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
     }
@@ -230,14 +248,30 @@ void gc_sweep(garbage_collector_t *gc) {
                 }
 
                 garbage_collector_node_t *node_to_be_deleted = current;
+                rstack_t *stack_to_be_deleted = current->node;
+
                 current = current->next;
-                gc_remove_rstack(node_to_be_deleted);
+
+                free(node_to_be_deleted);
+
+                if (stack_to_be_deleted != nullptr) {
+                    free(stack_to_be_deleted);
+                }
             }
         }
         else {
             current = current->next;
         }
     }
+}
+
+void gc_sweep(garbage_collector_t *gc) {
+    if (gc == nullptr) {
+        return;
+    }
+
+    gc_rstack_cleaner(gc);
+    gc_rstack_removal(gc);
 }
 
 bool gc_is_empty(garbage_collector_t *gc) {
@@ -258,6 +292,7 @@ void gc_clear(void) {
 
         while (current != nullptr) {
             garbage_collector_node_t *next = current->next;
+            // todo: full clear?
             free(current);
             current = next;
         }
