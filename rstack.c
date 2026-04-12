@@ -296,7 +296,11 @@ rstack_t* rstack_read(char const *path) {
                 result_t number_result = read_number_from_file(file_ptr);
 
                 if (number_result.flag == true) {
-                    rstack_push_value(rs, number_result.value);
+                    if (rstack_push_value(rs, number_result.value) == FUNCTION_FAIL) {
+                        fclose(file_ptr);
+                        rstack_delete(rs);
+                        return nullptr;
+                    }
                 }
                 else { // Blad, errno ustawione przy wczytywaniu liczby
                     fclose(file_ptr);
@@ -319,36 +323,111 @@ rstack_t* rstack_read(char const *path) {
     return rs;
 }
 
-int rstack_write_helper(FILE *file_ptr, rstack_t *rs) { // wrong order
-    if (rs == nullptr) {
-        return FUNCTION_SUCCESS;
+int rstack_make_iterator(rstack_t *it, rstack_t *rs) {
+    if (it == nullptr || rs == nullptr) {
+        errno = EINVAL;
+        return FUNCTION_FAIL;
     }
 
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_visited == true) {
-            return FUNCTION_SUCCESS; // Wykryto cykl.
-        }
-
-        current->is_visited = true;
-
         if (current->is_stack == false) {
-            if (fprintf(file_ptr, "%lu\n", current->value.num_value) < 0) {
-                errno = EIO;
+            if (rstack_push_value(it, current->value.num_value) == FUNCTION_FAIL) {
                 return FUNCTION_FAIL;
             }
         }
-        else {
-            int function_result = rstack_write_helper(file_ptr, current->value.stack_value);
-            if (function_result != FUNCTION_SUCCESS) {
-                return function_result;
+        else if (current->is_visited == false) {
+            current->is_visited = true;
+            if (rstack_push_rstack(it, current->value.stack_value) == FUNCTION_FAIL) {
+                return FUNCTION_FAIL;
             }
         }
 
+        current->is_visited = true;
         current = current->next;
     }
 
+    return FUNCTION_SUCCESS;
+}
+
+int rstack_get_next_bottom(rstack_t *it, result_t *result) {
+    *result = result_new_empty();
+
+    if (it == nullptr) {
+        return FUNCTION_FAIL;
+    }
+
+    if (it->head == nullptr) {
+        return FUNCTION_SUCCESS;
+    }
+
+    if (it->head->is_stack) {
+        if (it->head->is_visited == false) {
+            it->head->is_visited = true; // todo: needed?
+
+            if (rstack_make_iterator(it, it->head->value.stack_value) == FUNCTION_FAIL) {
+                return FUNCTION_FAIL;
+            }
+
+            return rstack_get_next_bottom(it, result);
+        }
+        else {
+            return FUNCTION_SUCCESS; // Cycle detected
+        }
+    }
+    else {
+        result->flag = true;
+        result->value = it->head->value.num_value;
+        //rstack_pop(it);
+    }
+
+    return FUNCTION_SUCCESS;
+}
+
+int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
+    if (rs == nullptr) {
+        return FUNCTION_SUCCESS;
+    }
+
+    rstack_t *it = rstack_new();
+
+    if (it == nullptr) {
+        fclose(file_ptr);
+        return FUNCTION_FAIL;
+    }
+
+    if (rstack_make_iterator(it, rs) == FUNCTION_FAIL) {
+        fclose(file_ptr);
+        rstack_delete(it);
+        return FUNCTION_FAIL;
+    }
+
+    result_t current_val;
+
+    if (rstack_get_next_bottom(it, &current_val) == FUNCTION_FAIL) {
+        rstack_delete(it);
+        fclose(file_ptr);
+        return FUNCTION_FAIL;
+    }
+
+    while (current_val.flag == true) {
+        if (fprintf(file_ptr, "%lu\n", current_val.value) < 0) {
+            rstack_delete(it);
+            fclose(file_ptr);
+            errno = EIO;
+            return FUNCTION_FAIL;
+        }
+
+        if (rstack_get_next_bottom(it, &current_val) == FUNCTION_FAIL) {
+            rstack_delete(it);
+            fclose(file_ptr);
+            return FUNCTION_FAIL;
+        }
+        rstack_pop(it);
+    }
+
+    rstack_delete(it);
     return FUNCTION_SUCCESS;
 }
 
@@ -370,16 +449,47 @@ int rstack_write(char const *path, rstack_t *rs) {
     }
 
     int function_result = rstack_write_helper(file_ptr, rs);
+    reset_visited(rs);
+
     if (function_result == FUNCTION_FAIL) {
         fclose(file_ptr);
         return FUNCTION_FAIL;
     }
-
-    reset_visited(rs);
 
     if (fclose(file_ptr) != FUNCTION_SUCCESS) {
         return FUNCTION_FAIL;
     }
 
     return FUNCTION_SUCCESS;
+}
+
+
+static int wojtekmal_0(void) {
+    rstack_t *rs0 = rstack_new();
+    rstack_t *rs1 = rstack_new();
+    rstack_t *rs2 = rstack_new();
+
+    rstack_push_value(rs0, 3);
+    rstack_push_value(rs0, 2);
+    rstack_push_value(rs0, 1);
+    rstack_push_rstack(rs0, rs1);
+
+    rstack_push_value(rs1, 5);
+    rstack_push_rstack(rs1, rs2);
+    rstack_push_value(rs1, 4);
+
+    rstack_push_rstack(rs2, rs1);
+    rstack_push_value(rs2, 6);
+
+    rstack_write("w.out", rs0);
+
+    rstack_delete(rs0);
+    rstack_delete(rs1);
+    rstack_delete(rs2);
+
+    return 0;
+}
+
+int main() {
+    wojtekmal_0();
 }
