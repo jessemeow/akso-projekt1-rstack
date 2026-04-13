@@ -39,8 +39,6 @@ rstack_t *rstack_new() {
         if (global_gc == nullptr) {
             return nullptr;
         }
-
-        //satexit(gc_clear);
     }
 
     rstack_t *rstack = (rstack_t*)malloc(sizeof(rstack_t));
@@ -193,11 +191,11 @@ bool rstack_empty_helper(rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_stack == false) { // wartoscia wezla jest wartosc liczbowa
+        if (current->is_stack == false) { // Wartoscia wezla jest wartosc liczbowa.
             return false;
         }
 
-        if (current->is_visited == false) { // wartoscia wezla jest stos
+        if (current->is_visited == false) { // Wartoscia wezla jest stos.
             current->is_visited = true;
 
             if (rstack_empty_helper(current->value.stack_value) == false) {
@@ -420,6 +418,66 @@ static int wojtekmal_0(void) {
     return 0;
 }
 
+void test1() {
+    rstack_t *A = rstack_new();
+    rstack_t *B = rstack_new();
+    rstack_t *C = rstack_new();
+    rstack_t *D = rstack_new();
+    rstack_t *E = rstack_new();
+    rstack_t *F = rstack_new();
+    rstack_t *G = rstack_new();
+    rstack_t *H = rstack_new();
+    rstack_t *I = rstack_new();
+    rstack_t *J = rstack_new();
+    rstack_t *K = rstack_new();
+    rstack_t *L = rstack_new();
+    rstack_t *M = rstack_new();
+    rstack_t *N = rstack_new();
+    rstack_t *P = rstack_new();
+    rstack_t *Q = rstack_new();
+    rstack_t *R = rstack_new();
+    rstack_t *S = rstack_new();
+
+    rstack_push_rstack(A, B);
+    rstack_push_rstack(B, C);
+    rstack_push_rstack(C, D);
+    rstack_push_rstack(D, E);
+    rstack_push_rstack(E, F);
+    rstack_push_rstack(F, G);
+    rstack_push_rstack(G, H);
+    rstack_push_rstack(H, I);
+    rstack_push_rstack(I, J);
+    rstack_push_rstack(J, K);
+    rstack_push_rstack(K, L);
+    rstack_push_rstack(L, M);
+    rstack_push_rstack(M, N);
+    rstack_push_rstack(N, P);
+    rstack_push_rstack(P, Q);
+    rstack_push_rstack(Q, R);
+    rstack_push_rstack(R, S);
+
+    printf("%d\n", rstack_empty(A));
+
+    rstack_delete(A);
+    rstack_delete(B);
+    rstack_delete(C);
+    rstack_delete(D);
+    rstack_delete(E);
+    rstack_delete(F);
+    rstack_delete(G);
+    rstack_delete(H);
+    rstack_delete(I);
+    rstack_delete(J);
+    rstack_delete(K);
+    rstack_delete(L);
+    rstack_delete(M);
+    rstack_delete(N);
+    rstack_delete(P);
+    rstack_delete(Q);
+    rstack_delete(R);
+    rstack_delete(S);
+}
+
 int main() {
-    wojtekmal_0();
+    test1();
 }

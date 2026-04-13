@@ -289,21 +289,6 @@ bool gc_is_empty(garbage_collector_t *gc) {
     return false;
 }
 
-void gc_clear(void) {
-    if (global_gc != nullptr) {
-        garbage_collector_node_t *current = global_gc->head;
-
-        while (current != nullptr) {
-            garbage_collector_node_t *next = current->next;
-            // todo: full clear?
-            free(current);
-            current = next;
-        }
-
-        free(global_gc);
-    }
-}
-
 void gc_mark_and_sweep(garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;

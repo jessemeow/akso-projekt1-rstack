@@ -14,7 +14,6 @@ typedef struct garbage_collector garbage_collector_t;
 garbage_collector_t *gc_new();
 int gc_push_rstack(garbage_collector_t *gc, rstack_t *rs);
 void gc_mark_and_sweep(garbage_collector_t *gc);
-//void gc_clear(void);
 
 #endif //AKSO_RSTACK_RGARBAGE_COLLECTOR_H
 
