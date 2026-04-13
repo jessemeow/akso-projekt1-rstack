@@ -63,20 +63,36 @@ rstack_t *rstack_new() {
     return rstack;
 }
 
-void reset_visited(rstack_t *rs) {
+// todo: fix recursion
+// todo changed function result
+int reset_visited(rstack_t *rs) {
     if (rs != nullptr) {
-        rstack_node_t *current = rs->head;
 
-        while (current != nullptr) {
-            if (current->is_visited == true) {
-                current->is_visited = false;
+        rstack_t *current_stack = rstack_new();
+        if (current_stack == nullptr) {
+            return FUNCTION_FAIL;
+        }
 
-                if (current->is_stack == true) {
-                    reset_visited(current->value.stack_value);
+        if (rstack_push_rstack(current_stack, rs) == FUNCTION_FAIL) {
+            return FUNCTION_FAIL;
+        }
+
+        while (current_stack->head != nullptr) {
+            rstack_node_t *current_node = current_stack->head;
+
+            while (current_node != nullptr) {
+                if (current_node->is_visited == true) {
+                    current_node->is_visited = false;
+
+                    if (current_node->is_stack == true) {
+                        rstack_push_rstack(current_stack, current_node->value.stack_value);
+                    }
                 }
+
+                current_node = current_node->next;
             }
 
-            current = current->next;
+            rstack_pop(current_stack);
         }
     }
 }
@@ -153,6 +169,7 @@ void rstack_pop(rstack_t *rs) {
     }
 }
 
+// todo: to powinna byc funkcja rekurencyjna, ale czy nie bedzie stack overflow?
 bool rstack_empty_helper(rstack_t *rs) {
     if (rs == nullptr) {
         return true;
@@ -323,111 +340,13 @@ rstack_t* rstack_read(char const *path) {
     return rs;
 }
 
-int rstack_make_iterator(rstack_t *it, rstack_t *rs) {
-    if (it == nullptr || rs == nullptr) {
-        errno = EINVAL;
-        return FUNCTION_FAIL;
-    }
-
-    rstack_node_t *current = rs->head;
-
-    while (current != nullptr) {
-        if (current->is_stack == false) {
-            if (rstack_push_value(it, current->value.num_value) == FUNCTION_FAIL) {
-                return FUNCTION_FAIL;
-            }
-        }
-        else if (current->is_visited == false) {
-            current->is_visited = true;
-            if (rstack_push_rstack(it, current->value.stack_value) == FUNCTION_FAIL) {
-                return FUNCTION_FAIL;
-            }
-        }
-
-        current->is_visited = true;
-        current = current->next;
-    }
-
-    return FUNCTION_SUCCESS;
-}
-
-int rstack_get_next_bottom(rstack_t *it, result_t *result) {
-    *result = result_new_empty();
-
-    if (it == nullptr) {
-        return FUNCTION_FAIL;
-    }
-
-    if (it->head == nullptr) {
-        return FUNCTION_SUCCESS;
-    }
-
-    if (it->head->is_stack) {
-        if (it->head->is_visited == false) {
-            it->head->is_visited = true; // todo: needed?
-
-            if (rstack_make_iterator(it, it->head->value.stack_value) == FUNCTION_FAIL) {
-                return FUNCTION_FAIL;
-            }
-
-            return rstack_get_next_bottom(it, result);
-        }
-        else {
-            return FUNCTION_SUCCESS; // Cycle detected
-        }
-    }
-    else {
-        result->flag = true;
-        result->value = it->head->value.num_value;
-        //rstack_pop(it);
-    }
-
-    return FUNCTION_SUCCESS;
-}
-
 int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
     if (rs == nullptr) {
         return FUNCTION_SUCCESS;
     }
 
-    rstack_t *it = rstack_new();
+    
 
-    if (it == nullptr) {
-        fclose(file_ptr);
-        return FUNCTION_FAIL;
-    }
-
-    if (rstack_make_iterator(it, rs) == FUNCTION_FAIL) {
-        fclose(file_ptr);
-        rstack_delete(it);
-        return FUNCTION_FAIL;
-    }
-
-    result_t current_val;
-
-    if (rstack_get_next_bottom(it, &current_val) == FUNCTION_FAIL) {
-        rstack_delete(it);
-        fclose(file_ptr);
-        return FUNCTION_FAIL;
-    }
-
-    while (current_val.flag == true) {
-        if (fprintf(file_ptr, "%lu\n", current_val.value) < 0) {
-            rstack_delete(it);
-            fclose(file_ptr);
-            errno = EIO;
-            return FUNCTION_FAIL;
-        }
-
-        if (rstack_get_next_bottom(it, &current_val) == FUNCTION_FAIL) {
-            rstack_delete(it);
-            fclose(file_ptr);
-            return FUNCTION_FAIL;
-        }
-        rstack_pop(it);
-    }
-
-    rstack_delete(it);
     return FUNCTION_SUCCESS;
 }
 
@@ -448,13 +367,9 @@ int rstack_write(char const *path, rstack_t *rs) {
         return FUNCTION_FAIL;
     }
 
-    int function_result = rstack_write_helper(file_ptr, rs);
-    reset_visited(rs);
 
-    if (function_result == FUNCTION_FAIL) {
-        fclose(file_ptr);
-        return FUNCTION_FAIL;
-    }
+
+
 
     if (fclose(file_ptr) != FUNCTION_SUCCESS) {
         return FUNCTION_FAIL;
