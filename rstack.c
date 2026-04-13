@@ -66,35 +66,50 @@ rstack_t *rstack_new() {
 // todo: fix recursion
 // todo changed function result
 int reset_visited(rstack_t *rs) {
-    if (rs != nullptr) {
+    if (rs == nullptr) {
+        return FUNCTION_SUCCESS;
+    }
 
-        rstack_t *current_stack = rstack_new();
+    rstack_t *todo_rs = rstack_new();
+    if (todo_rs == nullptr) {
+        return FUNCTION_FAIL;
+    }
+
+    if (rstack_push_rstack(todo_rs, rs) == FUNCTION_FAIL) {
+        rstack_delete(todo_rs);
+        return FUNCTION_FAIL;
+    }
+
+    while (todo_rs->head != nullptr) {
+        rstack_t *current_stack = todo_rs->head->value.stack_value;
+
+        rstack_pop(todo_rs);
+
         if (current_stack == nullptr) {
-            return FUNCTION_FAIL;
+            continue;
         }
 
-        if (rstack_push_rstack(current_stack, rs) == FUNCTION_FAIL) {
-            return FUNCTION_FAIL;
-        }
+        rstack_node_t *current_node = current_stack->head;
 
-        while (current_stack->head != nullptr) {
-            rstack_node_t *current_node = current_stack->head;
+        while (current_node != nullptr) {
+            if (current_node->is_visited == true) {
+                current_node->is_visited = false;
 
-            while (current_node != nullptr) {
-                if (current_node->is_visited == true) {
-                    current_node->is_visited = false;
-
-                    if (current_node->is_stack == true) {
-                        rstack_push_rstack(current_stack, current_node->value.stack_value);
+                if (current_node->is_stack == true && current_node->value.stack_value != nullptr) {
+                    if (rstack_push_rstack(todo_rs, current_node->value.stack_value) == FUNCTION_FAIL) {
+                        rstack_delete(todo_rs);
+                        return FUNCTION_FAIL;
                     }
                 }
-
-                current_node = current_node->next;
             }
 
-            rstack_pop(current_stack);
+            current_node = current_node->next;
         }
     }
+
+    rstack_delete(todo_rs);
+
+    return FUNCTION_SUCCESS;
 }
 
 void rstack_delete(rstack_t *rs) {
