@@ -12,16 +12,18 @@ typedef struct garbage_collector {
     garbage_collector_node_t *head;
 } garbage_collector_t;
 
-garbage_collector_t global_gc_instance = { .head = nullptr };
+garbage_collector_t global_gc_instance = {.head = nullptr};
 garbage_collector_t *global_gc = &global_gc_instance;
 
 typedef struct rstack_node {
     bool is_stack;
     bool is_visited;
+
     union {
         uint64_t num_value;
         rstack_t *stack_value;
     } value;
+
     struct rstack_node *next;
 } rstack_node_t;
 
@@ -38,7 +40,7 @@ garbage_collector_node_t *gc_new_node(rstack_t *rs) {
         return nullptr;
     }
 
-    garbage_collector_node_t *gc_node = (garbage_collector_node_t*)malloc(sizeof(garbage_collector_node_t));
+    garbage_collector_node_t *gc_node = (garbage_collector_node_t *) malloc(sizeof(garbage_collector_node_t));
 
     if (gc_node == nullptr) {
         errno = ENOMEM;
@@ -131,7 +133,9 @@ void rstack_set_reachable(rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_stack && current->value.stack_value != nullptr && current->value.stack_value->reachable == false) { // todo: simplify
+        if (current->is_stack && current->value.stack_value != nullptr && current->value.stack_value->reachable ==
+            false) {
+            // todo: simplify
             rstack_set_reachable(current->value.stack_value);
         }
 
@@ -172,7 +176,8 @@ void rstack_cleaner(rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_stack == true) { // segfault A->B->A
+        if (current->is_stack == true) {
+            // segfault A->B->A
             current->value.stack_value->internal_ref_count--;
             current->value.stack_value->ref_count--;
         }
@@ -226,12 +231,10 @@ void gc_rstack_removal(garbage_collector_t *gc) {
             if (rs->reachable) {
                 previous = current;
                 current = current->next;
-            }
-            else {
+            } else {
                 if (previous != nullptr) {
                     previous->next = current->next;
-                }
-                else {
+                } else {
                     gc->head = current->next;
                 }
 
@@ -246,8 +249,7 @@ void gc_rstack_removal(garbage_collector_t *gc) {
                     free(stack_to_be_deleted);
                 }
             }
-        }
-        else {
+        } else {
             current = current->next;
         }
     }
@@ -283,4 +285,3 @@ void gc_mark_and_sweep(garbage_collector_t *gc) {
     gc_sweep(gc);
     gc_reset(gc);
 }
-

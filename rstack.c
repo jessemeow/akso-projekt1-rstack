@@ -14,18 +14,19 @@ typedef struct rstack rstack_t;
 typedef struct rstack_node {
     bool is_stack;
     bool is_visited;
+    struct rstack_node *next;
+
     union {
         uint64_t num_value;
         rstack_t *stack_value;
     } value;
-    struct rstack_node *next;
 } rstack_node_t;
 
 typedef struct rstack {
-    uint64_t ref_count;
-    uint64_t internal_ref_count;
     bool reachable;
     rstack_node_t *head;
+    uint64_t ref_count;
+    uint64_t internal_ref_count;
 } rstack_t;
 
 extern garbage_collector_t *global_gc;
@@ -33,7 +34,7 @@ extern garbage_collector_t *global_gc;
 // todo: fix - DONT TREAT CYCLES AS ERRORS
 
 rstack_t *rstack_new() {
-    rstack_t *rstack = (rstack_t*)malloc(sizeof(rstack_t));
+    rstack_t *rstack = (rstack_t *) malloc(sizeof(rstack_t));
 
     if (rstack == nullptr) {
         errno = ENOMEM;
@@ -84,7 +85,7 @@ int rstack_push_value(rstack_t *rs, uint64_t value) {
         return FUNCTION_FAIL;
     }
 
-    rstack_node_t *new_node = (rstack_node_t*)malloc(sizeof(rstack_node_t));
+    rstack_node_t *new_node = (rstack_node_t *) malloc(sizeof(rstack_node_t));
     if (new_node == nullptr) {
         errno = ENOMEM;
         return FUNCTION_FAIL;
@@ -104,7 +105,7 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
         return FUNCTION_FAIL;
     }
 
-    rstack_node_t *new_node = (rstack_node_t*)malloc(sizeof(rstack_node_t));
+    rstack_node_t *new_node = (rstack_node_t *) malloc(sizeof(rstack_node_t));
     if (new_node == nullptr) {
         errno = ENOMEM; // todo: errno already set?
         return FUNCTION_FAIL;
@@ -152,11 +153,13 @@ bool rstack_empty_helper(rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_stack == false) { // Wartoscia wezla jest wartosc liczbowa.
+        if (current->is_stack == false) {
+            // Wartoscia wezla jest wartosc liczbowa.
             return false;
         }
 
-        if (current->is_visited == false) { // Wartoscia wezla jest stos.
+        if (current->is_visited == false) {
+            // Wartoscia wezla jest stos.
             current->is_visited = true;
 
             if (rstack_empty_helper(current->value.stack_value) == false) {
@@ -234,8 +237,7 @@ result_t read_number_from_file(FILE *file_ptr) {
         if (number_result > (UINT64_MAX - digit) / 10) {
             result.flag = false;
             errno = ERANGE;
-        }
-        else {
+        } else {
             number_result *= 10;
             number_result += digit;
             character = fgetc(file_ptr);
@@ -253,7 +255,7 @@ result_t read_number_from_file(FILE *file_ptr) {
     return result;
 }
 
-rstack_t* rstack_read(char const *path) {
+rstack_t *rstack_read(char const *path) {
     FILE *file_ptr = fopen(path, "r");
     if (file_ptr == nullptr) {
         errno = ENOENT;
@@ -275,7 +277,8 @@ rstack_t* rstack_read(char const *path) {
         }
 
         if (is_number(character)) {
-            if (ungetc(character, file_ptr) == EOF) { // Blad
+            if (ungetc(character, file_ptr) == EOF) {
+                // Blad
                 errno = EIO;
                 fclose(file_ptr);
                 rstack_delete(rs);
@@ -292,20 +295,19 @@ rstack_t* rstack_read(char const *path) {
                 }
 
                 character = fgetc(file_ptr); // todo fgetc fail?
-            }
-            else { // Blad, errno ustawione przy wczytywaniu liczby
+            } else {
+                // Blad, errno ustawione przy wczytywaniu liczby
                 fclose(file_ptr);
                 rstack_delete(rs);
                 return nullptr;
             }
-        }
-        else { // Znaleziono bledny znak (Blad).
+        } else {
+            // Znaleziono bledny znak (Blad).
             errno = EINVAL;
             fclose(file_ptr);
             rstack_delete(rs);
             return nullptr;
         }
-
     }
 
     fclose(file_ptr);
@@ -313,7 +315,7 @@ rstack_t* rstack_read(char const *path) {
     return rs;
 }
 
-int print_num(FILE* file_ptr, uint64_t num) {
+int print_num(FILE *file_ptr, uint64_t num) {
     if (fprintf(file_ptr, "%lu\n", num) < 0) {
         errno = EIO;
         return FUNCTION_FAIL;
@@ -345,8 +347,7 @@ int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
 
     if (node->is_stack == false) {
         print_num(file_ptr, node->value.num_value);
-    }
-    else {
+    } else {
         rstack_t *current_rs = node->value.stack_value;
 
         if (current_rs != nullptr && current_rs->head != nullptr) {
