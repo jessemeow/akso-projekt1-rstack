@@ -32,21 +32,6 @@ typedef struct rstack {
     rstack_node_t *head;
 } rstack_t;
 
-extern garbage_collector_t *global_gc;
-
-garbage_collector_t *gc_new() {
-    garbage_collector_t *gc = (garbage_collector_t*)malloc(sizeof(garbage_collector_t));
-
-    if (gc == nullptr) {
-        errno = ENOMEM;
-        return nullptr;
-    }
-
-    gc->head = nullptr;
-
-    return gc;
-}
-
 garbage_collector_node_t *gc_new_node(rstack_t *rs) {
     if (rs == nullptr) {
         errno = EINVAL;

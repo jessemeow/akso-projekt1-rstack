@@ -33,14 +33,6 @@ extern garbage_collector_t *global_gc;
 // todo: fix - DONT TREAT CYCLES AS ERRORS
 
 rstack_t *rstack_new() {
-    if (global_gc == nullptr) {
-        global_gc = gc_new();
-
-        if (global_gc == nullptr) {
-            return nullptr;
-        }
-    }
-
     rstack_t *rstack = (rstack_t*)malloc(sizeof(rstack_t));
 
     if (rstack == nullptr) {
@@ -393,6 +385,10 @@ int rstack_write(char const *path, rstack_t *rs) {
 
     if (function_result == FUNCTION_FAIL) {
         fclose(file_ptr);
+        return FUNCTION_FAIL;
+    }
+
+    if (fclose(file_ptr) != FUNCTION_SUCCESS) {
         return FUNCTION_FAIL;
     }
 
