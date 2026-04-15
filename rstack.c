@@ -61,53 +61,22 @@ rstack_t *rstack_new() {
     return rstack;
 }
 
-// todo: fix recursion
-// todo changed function result
-int reset_visited(rstack_t *rs) {
-    if (rs == nullptr) {
-        return FUNCTION_SUCCESS;
-    }
+void reset_visited(rstack_t *rs) {
+    if (rs != nullptr) {
+        rstack_node_t *current = rs->head;
 
-    rstack_t *todo_rs = rstack_new();
-    if (todo_rs == nullptr) {
-        return FUNCTION_FAIL;
-    }
+        while (current != nullptr) {
+            if (current->is_visited == true) {
+                current->is_visited = false;
 
-    if (rstack_push_rstack(todo_rs, rs) == FUNCTION_FAIL) {
-        rstack_delete(todo_rs);
-        return FUNCTION_FAIL;
-    }
-
-    while (todo_rs->head != nullptr) {
-        rstack_t *current_stack = todo_rs->head->value.stack_value;
-
-        rstack_pop(todo_rs);
-
-        if (current_stack == nullptr) {
-            continue;
-        }
-
-        rstack_node_t *current_node = current_stack->head;
-
-        while (current_node != nullptr) {
-            if (current_node->is_visited == true) {
-                current_node->is_visited = false;
-
-                if (current_node->is_stack == true && current_node->value.stack_value != nullptr) {
-                    if (rstack_push_rstack(todo_rs, current_node->value.stack_value) == FUNCTION_FAIL) {
-                        rstack_delete(todo_rs);
-                        return FUNCTION_FAIL;
-                    }
+                if (current->is_stack == true) {
+                    reset_visited(current->value.stack_value);
                 }
             }
 
-            current_node = current_node->next;
+            current = current->next;
         }
     }
-
-    rstack_delete(todo_rs);
-
-    return FUNCTION_SUCCESS;
 }
 
 void rstack_delete(rstack_t *rs) {
@@ -294,14 +263,12 @@ result_t read_number_from_file(FILE *file_ptr) {
 
 rstack_t* rstack_read(char const *path) {
     FILE *file_ptr = fopen(path, "r");
-
     if (file_ptr == nullptr) {
         errno = ENOENT;
         return nullptr;
     }
 
     rstack_t *rs = rstack_new();
-
     if (rs == nullptr) {
         fclose(file_ptr);
         return nullptr;
@@ -353,12 +320,130 @@ rstack_t* rstack_read(char const *path) {
     return rs;
 }
 
+int rstack_push_to_iterator(rstack_t *it, rstack_t *rs) { // succeed if pushed stack is null, immediately stops on detecting cycle
+    if (it == nullptr) {
+        return FUNCTION_FAIL;
+    }
+
+    if (rs == nullptr) {
+        return FUNCTION_SUCCESS;
+    }
+
+    rstack_node_t *current = rs->head;
+
+    while (current != nullptr && current->is_visited == false) {
+        current->is_visited = true;
+
+        if (current->is_stack == false) {
+            if (rstack_push_value(it, current->value.num_value) == FUNCTION_FAIL) {
+                return FUNCTION_FAIL;
+            }
+        }
+        else if (current->value.stack_value != nullptr) {
+            if (rstack_push_rstack(it, current->value.stack_value) == FUNCTION_FAIL) {
+                return FUNCTION_FAIL;
+            }
+        }
+
+        current = current->next;
+    }
+
+    if (current != nullptr && current->is_visited) {
+        return CYCLE_DETECTED; // todo: use this somewhere else too idk
+    }
+
+    return FUNCTION_SUCCESS;
+}
+
+int rstack_fetch_next_from_iterator(rstack_t *it, result_t* result) {
+    result->flag = false;
+    result->value = 0;
+
+    if (it == nullptr || result == nullptr) {
+        return FUNCTION_FAIL;
+    }
+
+    while (it->head != nullptr && it->head->is_stack) {
+        rstack_t *rs = it->head->value.stack_value;
+        if (rs != nullptr) {
+            rstack_pop(it);
+
+            int function_push_result = rstack_push_to_iterator(it, rs);
+            if (function_push_result != FUNCTION_SUCCESS) {
+                return function_push_result;
+            }
+        }
+    }
+
+    if (it->head == nullptr) {
+        return FUNCTION_SUCCESS;
+    }
+
+    result->flag = true;
+    result->value = it->head->value.num_value;
+
+    return FUNCTION_SUCCESS;
+}
+
+// todo: reset subnodes
 int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
     if (rs == nullptr) {
         return FUNCTION_SUCCESS;
     }
 
-    
+    if (file_ptr == nullptr) {
+        errno = ENOENT;
+        return FUNCTION_FAIL;
+    }
+
+    rstack_t *it = rstack_new();
+    if (it == nullptr) {
+        return FUNCTION_FAIL;
+    }
+
+    if (rstack_push_to_iterator(it, rs) == FUNCTION_FAIL) {
+        rstack_delete(it);
+        return FUNCTION_FAIL;
+    }
+
+    result_t current_val = result_new_empty();
+
+    int function_result = rstack_fetch_next_from_iterator(it, &current_val);
+
+    if (function_result == FUNCTION_FAIL) {
+        rstack_delete(it);
+        return FUNCTION_FAIL;
+    }
+
+    if (function_result == CYCLE_DETECTED) {
+        rstack_delete(it);
+        return FUNCTION_SUCCESS;
+    }
+
+    while (current_val.flag == true) {
+        rstack_pop(it);
+
+        uint64_t current_num_value = current_val.value;
+        if (fprintf(file_ptr, "%lu\n", current_num_value) < 0) {
+            errno = EIO;
+            rstack_delete(it);
+            return FUNCTION_FAIL;
+        }
+
+        function_result = rstack_fetch_next_from_iterator(it, &current_val);
+
+        if (function_result == FUNCTION_FAIL) {
+            rstack_delete(it);
+            return FUNCTION_FAIL;
+        }
+
+        if (function_result == CYCLE_DETECTED) {
+            rstack_delete(it);
+            return FUNCTION_SUCCESS;
+        }
+    }
+
+    rstack_delete(it);
 
     return FUNCTION_SUCCESS;
 }
@@ -376,13 +461,17 @@ int rstack_write(char const *path, rstack_t *rs) {
 
     FILE *file_ptr = fopen(path, "w");
     if (file_ptr == nullptr) {
-        errno = ENOENT; // todo: correct errno? check for rstack_read too
+        errno = ENOENT;
         return FUNCTION_FAIL;
     }
 
+    if (rstack_write_helper(file_ptr, rs) == FUNCTION_FAIL) {
+        reset_visited(rs); 
+        fclose(file_ptr); // Function fails regardless of fclose fail.
+        return FUNCTION_FAIL;
+    }
 
-
-
+    reset_visited(rs); //todo ?
 
     if (fclose(file_ptr) != FUNCTION_SUCCESS) {
         return FUNCTION_FAIL;
@@ -479,5 +568,5 @@ void test1() {
 }
 
 int main() {
-    test1();
+    wojtekmal_0();
 }

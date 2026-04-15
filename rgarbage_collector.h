@@ -7,6 +7,7 @@
 
 #define FUNCTION_FAIL (-1)
 #define FUNCTION_SUCCESS 0
+#define CYCLE_DETECTED 1
 
 typedef struct garbage_collector_node garbage_collector_node_t;
 typedef struct garbage_collector garbage_collector_t;
