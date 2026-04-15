@@ -278,41 +278,42 @@ rstack_t* rstack_read(char const *path) {
     while (character != EOF) {
         if (isspace(character)) {
             while (isspace(character)) {
-                character = fgetc(file_ptr);
+                character = fgetc(file_ptr); // todo fgetc fail?
             }
         }
-        else {
-            if (is_number(character)) {
-                if (ungetc(character, file_ptr) == EOF) { // Blad
-                    errno = EIO;
-                    fclose(file_ptr);
-                    rstack_delete(rs);
-                    return nullptr;
-                }
 
-                result_t number_result = read_number_from_file(file_ptr);
-
-                if (number_result.flag == true) {
-                    if (rstack_push_value(rs, number_result.value) == FUNCTION_FAIL) {
-                        fclose(file_ptr);
-                        rstack_delete(rs);
-                        return nullptr;
-                    }
-                }
-                else { // Blad, errno ustawione przy wczytywaniu liczby
-                    fclose(file_ptr);
-                    rstack_delete(rs);
-                    return nullptr;
-                }
+        if (is_number(character)) {
+            if (ungetc(character, file_ptr) == EOF) { // Blad
+                errno = EIO;
+                fclose(file_ptr);
+                rstack_delete(rs);
+                return nullptr;
             }
-            else { // Znaleziono bledny znak (Blad).
-                errno = EINVAL;
+
+            result_t number_result = read_number_from_file(file_ptr);
+
+            if (number_result.flag == true) {
+                if (rstack_push_value(rs, number_result.value) == FUNCTION_FAIL) {
+                    fclose(file_ptr);
+                    rstack_delete(rs);
+                    return nullptr;
+                }
+
+                character = fgetc(file_ptr); // todo fgetc fail?
+            }
+            else { // Blad, errno ustawione przy wczytywaniu liczby
                 fclose(file_ptr);
                 rstack_delete(rs);
                 return nullptr;
             }
         }
-        character = fgetc(file_ptr);
+        else { // Znaleziono bledny znak (Blad).
+            errno = EINVAL;
+            fclose(file_ptr);
+            rstack_delete(rs);
+            return nullptr;
+        }
+
     }
 
     fclose(file_ptr);
@@ -320,74 +321,17 @@ rstack_t* rstack_read(char const *path) {
     return rs;
 }
 
-int rstack_push_to_iterator(rstack_t *it, rstack_t *rs) { // succeed if pushed stack is null, immediately stops on detecting cycle
-    if (it == nullptr) {
+int print_num(FILE* file_ptr, uint64_t num) {
+    if (fprintf(file_ptr, "%lu\n", num) < 0) {
+        errno = EIO;
         return FUNCTION_FAIL;
-    }
-
-    if (rs == nullptr) {
-        return FUNCTION_SUCCESS;
-    }
-
-    rstack_node_t *current = rs->head;
-
-    while (current != nullptr && current->is_visited == false) {
-        current->is_visited = true;
-
-        if (current->is_stack == false) {
-            if (rstack_push_value(it, current->value.num_value) == FUNCTION_FAIL) {
-                return FUNCTION_FAIL;
-            }
-        }
-        else if (current->value.stack_value != nullptr) {
-            if (rstack_push_rstack(it, current->value.stack_value) == FUNCTION_FAIL) {
-                return FUNCTION_FAIL;
-            }
-        }
-
-        current = current->next;
-    }
-
-    if (current != nullptr && current->is_visited) {
-        return CYCLE_DETECTED; // todo: use this somewhere else too idk
     }
 
     return FUNCTION_SUCCESS;
 }
 
-int rstack_fetch_next_from_iterator(rstack_t *it, result_t* result) {
-    result->flag = false;
-    result->value = 0;
-
-    if (it == nullptr || result == nullptr) {
-        return FUNCTION_FAIL;
-    }
-
-    while (it->head != nullptr && it->head->is_stack) {
-        rstack_t *rs = it->head->value.stack_value;
-        if (rs != nullptr) {
-            rstack_pop(it);
-
-            int function_push_result = rstack_push_to_iterator(it, rs);
-            if (function_push_result != FUNCTION_SUCCESS) {
-                return function_push_result;
-            }
-        }
-    }
-
-    if (it->head == nullptr) {
-        return FUNCTION_SUCCESS;
-    }
-
-    result->flag = true;
-    result->value = it->head->value.num_value;
-
-    return FUNCTION_SUCCESS;
-}
-
-// todo: reset subnodes
-int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
-    if (rs == nullptr) {
+int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
+    if (node == nullptr) {
         return FUNCTION_SUCCESS;
     }
 
@@ -396,54 +340,32 @@ int rstack_write_helper(FILE *file_ptr, rstack_t *rs) {
         return FUNCTION_FAIL;
     }
 
-    rstack_t *it = rstack_new();
-    if (it == nullptr) {
-        return FUNCTION_FAIL;
+    if (node->is_visited) {
+        return CYCLE_DETECTED;
     }
 
-    if (rstack_push_to_iterator(it, rs) == FUNCTION_FAIL) {
-        rstack_delete(it);
-        return FUNCTION_FAIL;
+    int function_result = rstack_write_helper(file_ptr, node->next);
+    if (function_result != FUNCTION_SUCCESS) {
+        return function_result;
     }
 
-    result_t current_val = result_new_empty();
+    node->is_visited = true;
 
-    int function_result = rstack_fetch_next_from_iterator(it, &current_val);
-
-    if (function_result == FUNCTION_FAIL) {
-        rstack_delete(it);
-        return FUNCTION_FAIL;
+    if (node->is_stack == false) {
+        print_num(file_ptr, node->value.num_value);
     }
+    else {
+        rstack_t *current_rs = node->value.stack_value;
 
-    if (function_result == CYCLE_DETECTED) {
-        rstack_delete(it);
-        return FUNCTION_SUCCESS;
-    }
-
-    while (current_val.flag == true) {
-        rstack_pop(it);
-
-        uint64_t current_num_value = current_val.value;
-        if (fprintf(file_ptr, "%lu\n", current_num_value) < 0) {
-            errno = EIO;
-            rstack_delete(it);
-            return FUNCTION_FAIL;
-        }
-
-        function_result = rstack_fetch_next_from_iterator(it, &current_val);
-
-        if (function_result == FUNCTION_FAIL) {
-            rstack_delete(it);
-            return FUNCTION_FAIL;
-        }
-
-        if (function_result == CYCLE_DETECTED) {
-            rstack_delete(it);
-            return FUNCTION_SUCCESS;
+        if (current_rs != nullptr && current_rs->head != nullptr) {
+            function_result = rstack_write_helper(file_ptr, current_rs->head);
+            if (function_result != FUNCTION_SUCCESS) {
+                return function_result;
+            }
         }
     }
 
-    rstack_delete(it);
+    node->is_visited = false;
 
     return FUNCTION_SUCCESS;
 }
@@ -465,21 +387,17 @@ int rstack_write(char const *path, rstack_t *rs) {
         return FUNCTION_FAIL;
     }
 
-    if (rstack_write_helper(file_ptr, rs) == FUNCTION_FAIL) {
-        reset_visited(rs); 
-        fclose(file_ptr); // Function fails regardless of fclose fail.
-        return FUNCTION_FAIL;
-    }
+    int function_result = rstack_write_helper(file_ptr, rs->head);
 
-    reset_visited(rs); //todo ?
+    reset_visited(rs);
 
-    if (fclose(file_ptr) != FUNCTION_SUCCESS) {
+    if (function_result == FUNCTION_FAIL) {
+        fclose(file_ptr);
         return FUNCTION_FAIL;
     }
 
     return FUNCTION_SUCCESS;
 }
-
 
 static int wojtekmal_0(void) {
     rstack_t *rs0 = rstack_new();
@@ -567,6 +485,3 @@ void test1() {
     rstack_delete(S);
 }
 
-int main() {
-    wojtekmal_0();
-}
