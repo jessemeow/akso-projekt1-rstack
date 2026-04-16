@@ -38,5 +38,12 @@ test: test_runner
 	./test_runner five
 	./test_runner memory
 
+TEST_BATCH ?= test
+test_%.o: ./tests_$(TEST_BATCH)/%.c macros.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+test_%_executable: test_%.o librstack.so
+	gcc $^ -o $@ -L . -lrstack
+
 clean:
-	rm -f *.o *.so test_runner
+	rm -f *.o *.so test_runner test_*.fout test_*_executable test_*.o test.fout test.diff test.stdout test.valgrind test.make

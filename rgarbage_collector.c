@@ -18,23 +18,23 @@ garbage_collector_t *global_gc = &global_gc_instance;
 typedef struct rstack_node {
     bool is_stack;
     bool is_visited;
+    struct rstack_node *next;
 
     union {
         uint64_t num_value;
         rstack_t *stack_value;
     } value;
-
-    struct rstack_node *next;
 } rstack_node_t;
 
 typedef struct rstack {
-    uint64_t ref_count;
-    uint64_t internal_ref_count;
     bool reachable;
     rstack_node_t *head;
+    uint64_t ref_count;
+    uint64_t internal_ref_count;
 } rstack_t;
 
-garbage_collector_node_t *gc_new_node(rstack_t *rs) {
+
+static garbage_collector_node_t *gc_new_node(rstack_t *rs) {
     if (rs == nullptr) {
         errno = EINVAL;
         return nullptr;
@@ -73,7 +73,7 @@ int gc_push_rstack(garbage_collector_t *gc, rstack_t *rs) {
     return FUNCTION_SUCCESS;
 }
 
-bool rstack_is_root(rstack_t *rs) {
+static bool rstack_is_root(const rstack_t *rs) {
     if (rs != nullptr) {
         return (rs->ref_count > rs->internal_ref_count);
     }
@@ -82,7 +82,7 @@ bool rstack_is_root(rstack_t *rs) {
 }
 
 // todo: actually call this tho
-void gc_reset(garbage_collector_t *gc) {
+static void gc_reset(const garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
     }
@@ -103,7 +103,7 @@ void gc_reset(garbage_collector_t *gc) {
 }
 
 // todo: result return value?
-void gc_find_roots(garbage_collector_t *gc) {
+static void gc_find_roots(const garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
     }
@@ -123,7 +123,7 @@ void gc_find_roots(garbage_collector_t *gc) {
     }
 }
 
-void rstack_set_reachable(rstack_t *rs) {
+static void rstack_set_reachable(rstack_t *rs) {
     if (rs == nullptr) {
         return;
     }
@@ -133,8 +133,9 @@ void rstack_set_reachable(rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_stack && current->value.stack_value != nullptr && current->value.stack_value->reachable ==
-            false) {
+        if (current->is_stack &&
+            current->value.stack_value != nullptr &&
+            current->value.stack_value->reachable == false) {
             // todo: simplify
             rstack_set_reachable(current->value.stack_value);
         }
@@ -143,7 +144,7 @@ void rstack_set_reachable(rstack_t *rs) {
     }
 }
 
-void gc_find_reachable(garbage_collector_t *gc) {
+static void gc_find_reachable(const garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
     }
@@ -159,7 +160,7 @@ void gc_find_reachable(garbage_collector_t *gc) {
     }
 }
 
-void gc_mark(garbage_collector_t *gc) {
+static void gc_mark(const garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
     }
@@ -168,7 +169,7 @@ void gc_mark(garbage_collector_t *gc) {
     gc_find_reachable(gc);
 }
 
-void rstack_cleaner(rstack_t *rs) {
+static void rstack_cleaner(rstack_t *rs) {
     if (rs == nullptr) {
         return;
     }
@@ -177,7 +178,6 @@ void rstack_cleaner(rstack_t *rs) {
 
     while (current != nullptr) {
         if (current->is_stack == true) {
-            // segfault A->B->A
             current->value.stack_value->internal_ref_count--;
             current->value.stack_value->ref_count--;
         }
@@ -189,7 +189,7 @@ void rstack_cleaner(rstack_t *rs) {
     }
 }
 
-void gc_clean_node(garbage_collector_node_t *gc_node) {
+static void gc_clean_node(const garbage_collector_node_t *gc_node) {
     if (gc_node == nullptr) {
         return;
     }
@@ -198,7 +198,7 @@ void gc_clean_node(garbage_collector_node_t *gc_node) {
     rstack_cleaner(rs);
 }
 
-void gc_rstack_cleaner(garbage_collector_t *gc) {
+static void gc_rstack_cleaner(const garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
     }
@@ -216,7 +216,7 @@ void gc_rstack_cleaner(garbage_collector_t *gc) {
     }
 }
 
-void gc_rstack_removal(garbage_collector_t *gc) {
+static void gc_rstack_removal(garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
     }
@@ -231,10 +231,12 @@ void gc_rstack_removal(garbage_collector_t *gc) {
             if (rs->reachable) {
                 previous = current;
                 current = current->next;
-            } else {
+            }
+            else {
                 if (previous != nullptr) {
                     previous->next = current->next;
-                } else {
+                }
+                else {
                     gc->head = current->next;
                 }
 
@@ -249,31 +251,20 @@ void gc_rstack_removal(garbage_collector_t *gc) {
                     free(stack_to_be_deleted);
                 }
             }
-        } else {
+        }
+        else {
             current = current->next;
         }
     }
 }
 
-void gc_sweep(garbage_collector_t *gc) {
+static void gc_sweep(garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
     }
 
     gc_rstack_cleaner(gc);
     gc_rstack_removal(gc);
-}
-
-bool gc_is_empty(garbage_collector_t *gc) {
-    if (gc == nullptr) {
-        return false;
-    }
-
-    if (gc->head == nullptr) {
-        return true;
-    }
-
-    return false;
 }
 
 void gc_mark_and_sweep(garbage_collector_t *gc) {
