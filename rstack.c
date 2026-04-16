@@ -385,7 +385,7 @@ static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
     if (node->is_stack == false) {
         function_result = print_num_to_file(file_ptr, node->value.num_value);
         if (function_result == FUNCTION_FAIL) {
-            node->is_visited = false;
+            //node->is_visited = false;
             return FUNCTION_FAIL;
         }
     }
@@ -396,7 +396,7 @@ static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
             current_rs->head != nullptr) {
             function_result = rstack_write_helper(file_ptr, current_rs->head);
             if (function_result != FUNCTION_SUCCESS) {
-                node->is_visited = false;
+                //node->is_visited = false;
                 return function_result;
             }
         }
