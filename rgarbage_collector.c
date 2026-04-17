@@ -1,9 +1,9 @@
 #include "rgarbage_collector.h"
 
 typedef struct garbage_collector_node {
-    rstack_t *node;
-    struct garbage_collector_node *next;
     bool is_root;
+    struct garbage_collector_node *next;
+    rstack_t *node;
 } garbage_collector_node_t;
 
 typedef struct garbage_collector {
@@ -31,14 +31,15 @@ typedef struct rstack {
     uint64_t internal_ref_count;
 } rstack_t;
 
-
+// todo: handle errors??
 static garbage_collector_node_t *gc_new_node(rstack_t *rs) {
     if (rs == nullptr) {
         errno = EINVAL;
         return nullptr;
     }
 
-    garbage_collector_node_t *gc_node = (garbage_collector_node_t *) malloc(sizeof(garbage_collector_node_t));
+    garbage_collector_node_t *gc_node =
+        (garbage_collector_node_t *) malloc(sizeof(garbage_collector_node_t));
 
     if (gc_node == nullptr) {
         errno = ENOMEM;
@@ -72,11 +73,11 @@ int gc_push_rstack(garbage_collector_t *gc, rstack_t *rs) {
 }
 
 static bool rstack_is_root(const rstack_t *rs) {
-    if (rs != nullptr) {
-        return (rs->ref_count > rs->internal_ref_count);
+    if (rs == nullptr) {
+        return false;
     }
 
-    return false;
+    return (rs->ref_count > rs->internal_ref_count);
 }
 
 static void gc_reset(const garbage_collector_t *gc) {
@@ -109,10 +110,8 @@ static void gc_find_roots(const garbage_collector_t *gc) {
     while (current != nullptr) {
         const rstack_t *rs = current->node;
 
-        if (rs != nullptr) {
-            if (rstack_is_root(rs)) {
-                current->is_root = true;
-            }
+        if (rstack_is_root(rs)) {
+            current->is_root = true;
         }
 
         current = current->next;
@@ -132,7 +131,6 @@ static void rstack_set_reachable(rstack_t *rs) {
         if (current->is_stack &&
             current->value.stack_value != nullptr &&
             !current->value.stack_value->reachable) {
-            // todo: simplify
             rstack_set_reachable(current->value.stack_value);
         }
 
@@ -145,7 +143,7 @@ static void gc_find_reachable(const garbage_collector_t *gc) {
         return;
     }
 
-    garbage_collector_node_t *current = gc->head;
+    const garbage_collector_node_t *current = gc->head;
 
     while (current != nullptr) {
         if (current->is_root) {
@@ -173,7 +171,8 @@ static void rstack_cleaner(rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_stack) {
+        if (current->is_stack &&
+            current->value.stack_value != nullptr) {
             current->value.stack_value->internal_ref_count--;
             current->value.stack_value->ref_count--;
         }
@@ -212,6 +211,30 @@ static void gc_rstack_cleaner(const garbage_collector_t *gc) {
     }
 }
 
+static garbage_collector_node_t *gc_handle_unreachable
+                                (garbage_collector_node_t *previous,
+                                garbage_collector_node_t *current,
+                                garbage_collector_t *gc) {
+    if (previous != nullptr) {
+        previous->next = current->next;
+    }
+    else {
+        gc->head = current->next;
+    }
+
+    garbage_collector_node_t *node_to_be_deleted = current;
+    garbage_collector_node_t *next_node = current->next;
+    rstack_t *stack_to_be_deleted = current->node;
+
+    free(node_to_be_deleted);
+
+    if (stack_to_be_deleted != nullptr) {
+        free(stack_to_be_deleted);
+    }
+
+    return next_node;
+}
+
 static void gc_rstack_removal(garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
@@ -229,23 +252,7 @@ static void gc_rstack_removal(garbage_collector_t *gc) {
                 current = current->next;
             }
             else {
-                if (previous != nullptr) {
-                    previous->next = current->next;
-                }
-                else {
-                    gc->head = current->next;
-                }
-
-                garbage_collector_node_t *node_to_be_deleted = current;
-                rstack_t *stack_to_be_deleted = current->node;
-
-                current = current->next;
-
-                free(node_to_be_deleted);
-
-                if (stack_to_be_deleted != nullptr) {
-                    free(stack_to_be_deleted);
-                }
+                current = gc_handle_unreachable(previous, current, gc);
             }
         }
         else {

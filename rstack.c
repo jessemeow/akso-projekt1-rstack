@@ -123,6 +123,15 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
     return FUNCTION_SUCCESS;
 }
 
+static void rstack_pop_substack(rstack_t *stack_to_be_deleted) {
+    if (stack_to_be_deleted == nullptr) {
+        return;
+    }
+
+    stack_to_be_deleted->internal_ref_count--;
+    rstack_delete(stack_to_be_deleted);
+}
+
 void rstack_pop(rstack_t *rs) {
     if (rs == nullptr || rs->head == nullptr) {
         return;
@@ -138,8 +147,7 @@ void rstack_pop(rstack_t *rs) {
     rs->head = next_node;
 
     if (node_to_be_deleted->is_stack) {
-        node_to_be_deleted->value.stack_value->internal_ref_count--;
-        rstack_delete(node_to_be_deleted->value.stack_value);
+        rstack_pop_substack(node_to_be_deleted->value.stack_value);
     }
 
     free(node_to_be_deleted);
@@ -214,9 +222,9 @@ static result_t rstack_front_helper(const rstack_t *rs) {
             return result;
         }
 
-        const result_t temp_result = rstack_front_helper(current->value.stack_value);
-        if (temp_result.flag) {
-            return temp_result;
+        result = rstack_front_helper(current->value.stack_value); // todo: check ok
+        if (result.flag) {
+            return result;
         }
 
         current = current->next;
@@ -228,12 +236,15 @@ static result_t rstack_front_helper(const rstack_t *rs) {
 result_t rstack_front(rstack_t *rs) {
     const result_t result = rstack_front_helper(rs);
     reset_visited(rs);
-
     return result;
 }
 
-static bool is_number(const int character) {
+static bool is_digit(const int character) {
     return (character >= '0' && character <= '9');
+}
+
+static bool in_uint64_range(const uint64_t number, const uint64_t new_digit) {
+    return number <= (UINT64_MAX - new_digit) / 10;
 }
 
 static result_t read_number_from_file(FILE *file_ptr) {
@@ -245,10 +256,10 @@ static result_t read_number_from_file(FILE *file_ptr) {
 
     int character = fgetc(file_ptr);
 
-    while (character != EOF && result.flag && is_number(character)) {
+    while (character != EOF && result.flag && is_digit(character)) {
         const uint64_t digit = character - '0';
 
-        if (number_result > (UINT64_MAX - digit) / 10) {
+        if (!in_uint64_range(number_result, digit)) {
             result.flag = false;
             errno = ERANGE;
         }
@@ -283,8 +294,6 @@ static void skip_whitespace(FILE *file_ptr, int *character) {
 static int process_number(FILE *file_ptr, rstack_t *rs, int *character) {
     if (ungetc(*character, file_ptr) == EOF) {
         errno = EIO;
-        fclose(file_ptr);
-        rstack_delete(rs);
         return FUNCTION_FAIL;
     }
 
@@ -292,18 +301,38 @@ static int process_number(FILE *file_ptr, rstack_t *rs, int *character) {
 
     if (number_result.flag) {
         if (rstack_push_value(rs, number_result.value) == FUNCTION_FAIL) {
-            fclose(file_ptr);
-            rstack_delete(rs);
             return FUNCTION_FAIL;
         }
 
         *character = fgetc(file_ptr);
     }
     else {
-        // Blad przy wczytywaniu liczby.
-        fclose(file_ptr);
-        rstack_delete(rs);
         return FUNCTION_FAIL;
+    }
+
+    return FUNCTION_SUCCESS;
+}
+
+static int rstack_read_helper(FILE *file_ptr, rstack_t *rs) {
+    if (file_ptr == nullptr || rs == nullptr) {
+        return FUNCTION_FAIL;
+    }
+
+    int character = fgetc(file_ptr);
+    while (character != EOF) {
+        skip_whitespace(file_ptr, &character);
+
+        if (character == EOF) { break; }
+
+        if (is_digit(character)) {
+            if (process_number(file_ptr, rs, &character) == FUNCTION_FAIL) {
+                return FUNCTION_FAIL;
+            }
+        }
+        else {
+            errno = EINVAL;
+            return FUNCTION_FAIL;
+        }
     }
 
     return FUNCTION_SUCCESS;
@@ -327,28 +356,16 @@ rstack_t *rstack_read(char const *path) {
         return nullptr;
     }
 
-    int character = fgetc(file_ptr);
-    while (character != EOF) {
-        skip_whitespace(file_ptr, &character);
-
-        if (character == EOF) {
-            break;
-        }
-
-        if (is_number(character)) {
-            if (process_number(file_ptr, rs, &character) == FUNCTION_FAIL) {
-                return nullptr;
-            }
-        }
-        else {
-            errno = EINVAL;
-            fclose(file_ptr);
-            rstack_delete(rs);
-            return nullptr;
-        }
+    if (rstack_read_helper(file_ptr, rs) == FUNCTION_FAIL) {
+        fclose(file_ptr);
+        rstack_delete(rs);
+        return nullptr;
     }
 
-    fclose(file_ptr);
+    if (fclose(file_ptr) != FUNCTION_SUCCESS) {
+        rstack_delete(rs);
+        return nullptr;
+    }
 
     return rs;
 }
@@ -360,6 +377,16 @@ static int print_num_to_file(FILE *file_ptr, const uint64_t num) {
     }
 
     return FUNCTION_SUCCESS;
+}
+
+static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node);
+
+static int rstack_write_nested_stack(FILE *file_ptr, rstack_t *nested_rs) {
+    if (nested_rs == nullptr || nested_rs->head == nullptr) {
+        return FUNCTION_SUCCESS;
+    }
+
+    return rstack_write_helper(file_ptr, nested_rs->head);
 }
 
 static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
@@ -384,21 +411,14 @@ static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
     node->is_visited = true;
 
     if (node->is_stack) {
-        const rstack_t *current_rs = node->value.stack_value;
-
-        if (current_rs != nullptr &&
-            current_rs->head != nullptr) {
-            function_result = rstack_write_helper(file_ptr, current_rs->head);
-            if (function_result != FUNCTION_SUCCESS) {
-                return function_result;
-            }
-            }
+        function_result = rstack_write_nested_stack(file_ptr, node->value.stack_value);
     }
     else {
         function_result = print_num_to_file(file_ptr, node->value.num_value);
-        if (function_result == FUNCTION_FAIL) {
-            return FUNCTION_FAIL;
-        }
+    }
+
+    if (function_result != FUNCTION_SUCCESS) {
+        return function_result;
     }
 
     node->is_visited = false;
