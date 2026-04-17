@@ -5,7 +5,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <ctype.h>
-// todo: reformat into files - reformat style, - const vals
 
 typedef struct rstack rstack_t;
 
@@ -27,7 +26,7 @@ typedef struct rstack {
     uint64_t internal_ref_count;
 } rstack_t;
 
-extern garbage_collector_t *global_gc;
+extern garbage_collector_t *global_garbage_collector;
 
 rstack_t *rstack_new() {
     rstack_t *rstack = (rstack_t *) malloc(sizeof(rstack_t));
@@ -37,7 +36,7 @@ rstack_t *rstack_new() {
         return nullptr;
     }
 
-    if (gc_push_rstack(global_gc, rstack) == FUNCTION_FAIL) {
+    if (gc_push_rstack(global_garbage_collector, rstack) == FUNCTION_FAIL) {
         free(rstack);
         errno = ENOMEM;
         return nullptr;
@@ -58,10 +57,10 @@ static void reset_visited(const rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_visited == true) {
+        if (current->is_visited) {
             current->is_visited = false;
 
-            if (current->is_stack == true) {
+            if (current->is_stack) {
                 reset_visited(current->value.stack_value);
             }
         }
@@ -76,7 +75,7 @@ void rstack_delete(rstack_t *rs) {
     }
 
     rs->ref_count--;
-    gc_mark_and_sweep(global_gc);
+    gc_mark_and_sweep(global_garbage_collector);
 }
 
 int rstack_push_value(rstack_t *rs, uint64_t value) {
@@ -107,7 +106,7 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
 
     rstack_node_t *new_node = (rstack_node_t *) malloc(sizeof(rstack_node_t));
     if (new_node == nullptr) {
-        errno = ENOMEM; // todo: errno already set?
+        errno = ENOMEM;
         return FUNCTION_FAIL;
     }
 
@@ -138,7 +137,7 @@ void rstack_pop(rstack_t *rs) {
 
     rs->head = next_node;
 
-    if (node_to_be_deleted->is_stack == true) {
+    if (node_to_be_deleted->is_stack) {
         node_to_be_deleted->value.stack_value->internal_ref_count--;
         rstack_delete(node_to_be_deleted->value.stack_value);
     }
@@ -154,16 +153,14 @@ static bool rstack_empty_helper(const rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_stack == false) {
-            // Wartoscia wezla jest wartosc liczbowa.
+        if (!current->is_stack) {
             return false;
         }
 
-        if (current->is_visited == false) {
-            // Wartoscia wezla jest stos.
+        if (!current->is_visited) {
             current->is_visited = true;
 
-            if (rstack_empty_helper(current->value.stack_value) == false) {
+            if (!rstack_empty_helper(current->value.stack_value)) {
                 return false;
             }
         }
@@ -209,10 +206,10 @@ result_t rstack_front(rstack_t *rs) {
 
     rstack_node_t *current = rs->head;
 
-    while (current != nullptr && current->is_visited == false) {
+    while (current != nullptr && !current->is_visited) {
         current->is_visited = true;
 
-        if (current->is_stack == false) {
+        if (!current->is_stack) {
             result = result_new(current);
             reset_visited(rs);
             return result;
@@ -230,7 +227,7 @@ result_t rstack_front(rstack_t *rs) {
     return result;
 }
 
-static bool is_number(int character) {
+static bool is_number(const int character) {
     return (character >= '0' && character <= '9');
 }
 
@@ -243,7 +240,7 @@ static result_t read_number_from_file(FILE *file_ptr) {
 
     int character = fgetc(file_ptr);
 
-    while (character != EOF && result.flag == true && is_number(character)) {
+    while (character != EOF && result.flag && is_number(character)) {
         const uint64_t digit = character - '0';
 
         if (number_result > (UINT64_MAX - digit) / 10) {
@@ -261,14 +258,14 @@ static result_t read_number_from_file(FILE *file_ptr) {
         ungetc(character, file_ptr);
     }
 
-    if (result.flag == true) {
+    if (result.flag) {
         result.value = number_result;
     }
 
     return result;
 }
 
-static void skip_whitespace(FILE* file_ptr, int *character) {
+static void skip_whitespace(FILE *file_ptr, int *character) {
     if (file_ptr == nullptr) {
         return;
     }
@@ -278,7 +275,7 @@ static void skip_whitespace(FILE* file_ptr, int *character) {
     }
 }
 
-static int process_number(FILE* file_ptr, rstack_t *rs, int *character) {
+static int process_number(FILE *file_ptr, rstack_t *rs, int *character) {
     if (ungetc(*character, file_ptr) == EOF) {
         errno = EIO;
         fclose(file_ptr);
@@ -288,7 +285,7 @@ static int process_number(FILE* file_ptr, rstack_t *rs, int *character) {
 
     const result_t number_result = read_number_from_file(file_ptr);
 
-    if (number_result.flag == true) {
+    if (number_result.flag) {
         if (rstack_push_value(rs, number_result.value) == FUNCTION_FAIL) {
             fclose(file_ptr);
             rstack_delete(rs);
@@ -339,7 +336,6 @@ rstack_t *rstack_read(char const *path) {
             }
         }
         else {
-            // Znaleziono bledny znak (Blad).
             errno = EINVAL;
             fclose(file_ptr);
             rstack_delete(rs);
@@ -352,7 +348,7 @@ rstack_t *rstack_read(char const *path) {
     return rs;
 }
 
-static int print_num_to_file(FILE *file_ptr, uint64_t num) {
+static int print_num_to_file(FILE *file_ptr, const uint64_t num) {
     if (fprintf(file_ptr, "%lu\n", num) < 0) {
         errno = EIO;
         return FUNCTION_FAIL;
@@ -382,23 +378,21 @@ static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
 
     node->is_visited = true;
 
-    if (node->is_stack == false) {
-        function_result = print_num_to_file(file_ptr, node->value.num_value);
-        if (function_result == FUNCTION_FAIL) {
-            //node->is_visited = false;
-            return FUNCTION_FAIL;
-        }
-    }
-    else {
+    if (node->is_stack) {
         const rstack_t *current_rs = node->value.stack_value;
 
         if (current_rs != nullptr &&
             current_rs->head != nullptr) {
             function_result = rstack_write_helper(file_ptr, current_rs->head);
             if (function_result != FUNCTION_SUCCESS) {
-                //node->is_visited = false;
                 return function_result;
             }
+            }
+    }
+    else {
+        function_result = print_num_to_file(file_ptr, node->value.num_value);
+        if (function_result == FUNCTION_FAIL) {
+            return FUNCTION_FAIL;
         }
     }
 
@@ -441,3 +435,266 @@ int rstack_write(char const *path, rstack_t *rs) {
 }
 
 
+#ifndef TEST_MACROS
+#define TEST_MACROS
+
+#include <inttypes.h>
+#include <stdio.h> // IWYU pragma: keep (this stops clangd from reporting this include as unnecessary)
+
+#define PASS 0
+#define FAIL 1
+
+#define OUTPUT_FILE "test.fout"
+
+#define REPORT(...)                                                            \
+    do {                                                                       \
+        fprintf(stderr, "%s:%d (%s): ", __FILE__, __LINE__, __func__);         \
+        fprintf(stderr, __VA_ARGS__);                                          \
+        fprintf(stderr, "\n");                                                 \
+    } while (0)
+
+#define SIZE(x) (sizeof x / sizeof x[0])
+
+#define ASSERT(f)                                                              \
+    do {                                                                       \
+        if (!(f)) {                                                            \
+            REPORT("Assertion failed: %s", #f);                                \
+            return FAIL;                                                       \
+        }                                                                      \
+    } while (0)
+
+// If __VA_ARGS__ has a value, use it. Otherwise, fallback to 0.
+#define GET_EXPECTED(...) __VA_OPT__(__VA_ARGS__) __VA_OPT__(+) 0UL
+
+#define ASSERT_RESULT(c, f, ...)                                               \
+    do {                                                                       \
+        result_t r = c;                                                        \
+        if (r.flag != (f)) {                                                   \
+            REPORT("Result assertion failed, %s.flag is \"%s\" but should be " \
+                   "\"%s\".",                                                  \
+                   #c,                                                         \
+                   r.flag ? "true" : "false",                                  \
+                   #f);                                                        \
+            return FAIL;                                                       \
+        }                                                                      \
+        if ((f) && r.value != __VA_ARGS__ - 0) {                               \
+            REPORT("Result assertion failed, %s.value is %" PRIu64             \
+                   " but should be %" PRIu64 ".",                              \
+                   #c,                                                         \
+                   r.value,                                                    \
+                   GET_EXPECTED());                                            \
+            return FAIL;                                                       \
+        }                                                                      \
+    } while (0)
+
+#define NO_ERROR(f)                                                            \
+    do {                                                                       \
+        if ((f) != 0) {                                                        \
+            REPORT(                                                            \
+              "Expected %s to exit with no error but it returned %d", #f, f);  \
+            return FAIL;                                                       \
+        }                                                                      \
+    } while (0)
+#define CHECK_IF_NO_ERROR(f) NO_ERROR(f);
+
+#define PRINT_U64(v) printf("%" PRIu64 "\n", v);
+
+#define TEST_FILE(name) "test_" name ".fout"
+
+#endif // TEST_MACROS
+#include <assert.h>
+
+int main(void) {
+    rstack_t* rs0 = rstack_new();
+    rstack_t* rs1 = rstack_new();
+    rstack_t* rs2 = rstack_new();
+    rstack_t* rs3 = rstack_new();
+    rstack_t* rs4 = rstack_new();
+    rstack_t* rs5 = rstack_new();
+    rstack_t* rs6 = rstack_new();
+    rstack_t* rs7 = rstack_new();
+    rstack_t* rs8 = rstack_new();
+    rstack_t* rs9 = rstack_new();
+    NO_ERROR(rstack_push_rstack(rs3, rs6));
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    ASSERT(rstack_empty(rs4) == true);
+    NO_ERROR(rstack_push_rstack(rs6, rs1));
+    NO_ERROR(rstack_push_rstack(rs4, rs0));
+    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs6, rs0));
+    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
+    NO_ERROR(rstack_write("test_16.fout", rs9));
+    ASSERT_RESULT(rstack_front(rs9), false, 0UL);
+    NO_ERROR(rstack_write("test_12.fout", rs6));
+    ASSERT(rstack_empty(rs8) == true);
+    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs3, rs1));
+    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    NO_ERROR(rstack_write("test_1.fout", rs6));
+    ASSERT(rstack_empty(rs4) == true);
+    NO_ERROR(rstack_write("test_14.fout", rs6));
+    NO_ERROR(rstack_write("test_19.fout", rs0));
+    NO_ERROR(rstack_push_rstack(rs7, rs9));
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs0, rs3));
+    NO_ERROR(rstack_push_rstack(rs1, rs9));
+    ASSERT(rstack_empty(rs9) == true);
+    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs0, rs4));
+    NO_ERROR(rstack_push_rstack(rs1, rs1));
+    NO_ERROR(rstack_write("test_13.fout", rs8));
+    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs0, rs9));
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    ASSERT(rstack_empty(rs2) == true);
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
+    ASSERT(rstack_empty(rs6) == true);
+    NO_ERROR(rstack_push_rstack(rs3, rs6));
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    NO_ERROR(rstack_write("test_10.fout", rs9));
+    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs8, rs5));
+    NO_ERROR(rstack_push_rstack(rs6, rs2));
+    ASSERT(rstack_empty(rs5) == true);
+    NO_ERROR(rstack_push_rstack(rs8, rs9));
+    NO_ERROR(rstack_push_rstack(rs9, rs4));
+    NO_ERROR(rstack_push_rstack(rs7, rs7));
+    NO_ERROR(rstack_write("test_2.fout", rs9));
+    NO_ERROR(rstack_write("test_15.fout", rs7));
+    NO_ERROR(rstack_write("test_18.fout", rs4));
+    NO_ERROR(rstack_push_rstack(rs9, rs3));
+    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs7, rs4));
+    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs1, rs9));
+    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
+    NO_ERROR(rstack_write("test_0.fout", rs1));
+    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs4, rs7));
+    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs0, rs4));
+    ASSERT(rstack_empty(rs2) == true);
+    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
+    ASSERT(rstack_empty(rs4) == true);
+    NO_ERROR(rstack_push_rstack(rs9, rs6));
+    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs7, rs5));
+    NO_ERROR(rstack_push_rstack(rs5, rs1));
+    ASSERT(rstack_empty(rs5) == true);
+    NO_ERROR(rstack_write("test_9.fout", rs2));
+    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs7, rs7));
+    ASSERT(rstack_empty(rs7) == true);
+    NO_ERROR(rstack_write("test_8.fout", rs9));
+    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
+    ASSERT(rstack_empty(rs7) == true);
+    NO_ERROR(rstack_write("test_5.fout", rs6));
+    ASSERT(rstack_empty(rs5) == true);
+    NO_ERROR(rstack_push_rstack(rs3, rs1));
+    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
+    NO_ERROR(rstack_write("test_17.fout", rs4));
+    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs3, rs5));
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs5, rs8));
+    ASSERT(rstack_empty(rs2) == true);
+    ASSERT_RESULT(rstack_front(rs5), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    NO_ERROR(rstack_write("test_6.fout", rs4));
+    ASSERT(rstack_empty(rs2) == true);
+    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
+    ASSERT(rstack_empty(rs9) == true);
+    ASSERT(rstack_empty(rs5) == true);
+    ASSERT(rstack_empty(rs9) == true);
+    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
+    NO_ERROR(rstack_write("test_4.fout", rs8));
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs2, rs5));
+    NO_ERROR(rstack_push_rstack(rs0, rs0));
+    NO_ERROR(rstack_push_rstack(rs3, rs7));
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    ASSERT(rstack_empty(rs1) == true);
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
+    ASSERT(rstack_empty(rs0) == true);
+    NO_ERROR(rstack_push_rstack(rs1, rs7));
+    NO_ERROR(rstack_push_rstack(rs9, rs0));
+    NO_ERROR(rstack_push_rstack(rs4, rs1));
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs4, rs0));
+    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs5, rs8));
+    ASSERT_RESULT(rstack_front(rs5), false, 0UL);
+    ASSERT(rstack_empty(rs4) == true);
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    ASSERT(rstack_empty(rs4) == true);
+    NO_ERROR(rstack_push_rstack(rs2, rs8));
+    ASSERT_RESULT(rstack_front(rs5), false, 0UL);
+    ASSERT(rstack_empty(rs1) == true);
+    NO_ERROR(rstack_push_rstack(rs4, rs8));
+    NO_ERROR(rstack_write("test_7.fout", rs9));
+    ASSERT_RESULT(rstack_front(rs9), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs4, rs0));
+    NO_ERROR(rstack_push_rstack(rs6, rs4));
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs4, rs9));
+    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
+    ASSERT(rstack_empty(rs9) == true);
+    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
+    ASSERT(rstack_empty(rs4) == true);
+    ASSERT(rstack_empty(rs4) == true);
+    NO_ERROR(rstack_push_rstack(rs8, rs3));
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    ASSERT(rstack_empty(rs9) == true);
+    ASSERT_RESULT(rstack_front(rs9), false, 0UL);
+    NO_ERROR(rstack_write("test_3.fout", rs9));
+    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
+    ASSERT(rstack_empty(rs6) == true);
+    NO_ERROR(rstack_push_rstack(rs6, rs7));
+    ASSERT(rstack_empty(rs8) == true);
+    NO_ERROR(rstack_push_rstack(rs3, rs2));
+    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs9), false, 0UL);
+    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs7, rs4));
+    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs6, rs9));
+    NO_ERROR(rstack_push_rstack(rs1, rs2));
+    ASSERT(rstack_empty(rs1) == true);
+    NO_ERROR(rstack_write("test_11.fout", rs1));
+    NO_ERROR(rstack_push_rstack(rs9, rs0));
+    ASSERT(rstack_empty(rs5) == true);
+    ASSERT(rstack_empty(rs3) == true);
+    ASSERT(rstack_empty(rs5) == true);
+    ASSERT_RESULT(rstack_front(rs5), false, 0UL);
+    NO_ERROR(rstack_push_rstack(rs2, rs3));
+    ASSERT(rstack_empty(rs9) == true);
+    rstack_delete(rs0);
+    rstack_delete(rs1);
+    rstack_delete(rs2);
+    rstack_delete(rs3);
+    rstack_delete(rs4);
+    rstack_delete(rs5);
+    rstack_delete(rs6);
+    rstack_delete(rs7);
+    rstack_delete(rs8);
+    rstack_delete(rs9);
+
+        return PASS;
+}

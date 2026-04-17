@@ -1,7 +1,5 @@
 #include "rgarbage_collector.h"
 
-// todo: consts
-
 typedef struct garbage_collector_node {
     rstack_t *node;
     struct garbage_collector_node *next;
@@ -13,7 +11,7 @@ typedef struct garbage_collector {
 } garbage_collector_t;
 
 garbage_collector_t global_gc_instance = {.head = nullptr};
-garbage_collector_t *global_gc = &global_gc_instance;
+garbage_collector_t *global_garbage_collector = &global_gc_instance;
 
 typedef struct rstack_node {
     bool is_stack;
@@ -81,7 +79,6 @@ static bool rstack_is_root(const rstack_t *rs) {
     return false;
 }
 
-// todo: actually call this tho
 static void gc_reset(const garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
@@ -102,7 +99,6 @@ static void gc_reset(const garbage_collector_t *gc) {
     }
 }
 
-// todo: result return value?
 static void gc_find_roots(const garbage_collector_t *gc) {
     if (gc == nullptr) {
         return;
@@ -111,7 +107,7 @@ static void gc_find_roots(const garbage_collector_t *gc) {
     garbage_collector_node_t *current = gc->head;
 
     while (current != nullptr) {
-        rstack_t *rs = current->node;
+        const rstack_t *rs = current->node;
 
         if (rs != nullptr) {
             if (rstack_is_root(rs)) {
@@ -130,12 +126,12 @@ static void rstack_set_reachable(rstack_t *rs) {
 
     rs->reachable = true;
 
-    rstack_node_t *current = rs->head;
+    const rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
         if (current->is_stack &&
             current->value.stack_value != nullptr &&
-            current->value.stack_value->reachable == false) {
+            !current->value.stack_value->reachable) {
             // todo: simplify
             rstack_set_reachable(current->value.stack_value);
         }
@@ -177,7 +173,7 @@ static void rstack_cleaner(rstack_t *rs) {
     rstack_node_t *current = rs->head;
 
     while (current != nullptr) {
-        if (current->is_stack == true) {
+        if (current->is_stack) {
             current->value.stack_value->internal_ref_count--;
             current->value.stack_value->ref_count--;
         }
@@ -203,12 +199,12 @@ static void gc_rstack_cleaner(const garbage_collector_t *gc) {
         return;
     }
 
-    garbage_collector_node_t *current = gc->head;
+    const garbage_collector_node_t *current = gc->head;
 
     while (current != nullptr) {
-        rstack_t *rs = current->node;
+        const rstack_t *rs = current->node;
 
-        if (rs != nullptr && rs->reachable == false) {
+        if (rs != nullptr && !rs->reachable) {
             gc_clean_node(current);
         }
 
@@ -225,7 +221,7 @@ static void gc_rstack_removal(garbage_collector_t *gc) {
     garbage_collector_node_t *previous = nullptr;
 
     while (current != nullptr) {
-        rstack_t *rs = current->node;
+        const rstack_t *rs = current->node;
 
         if (rs != nullptr) {
             if (rs->reachable) {
