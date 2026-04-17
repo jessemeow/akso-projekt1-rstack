@@ -172,7 +172,7 @@ static bool rstack_empty_helper(const rstack_t *rs) {
 }
 
 bool rstack_empty(rstack_t *rs) {
-    bool result = rstack_empty_helper(rs);
+    const bool result = rstack_empty_helper(rs);
     reset_visited(rs);
     return result;
 }
@@ -197,7 +197,7 @@ static result_t result_new(const rstack_node_t *node) {
     return result;
 }
 
-result_t rstack_front(rstack_t *rs) {
+static result_t rstack_front_helper(const rstack_t *rs) {
     result_t result = result_new_empty();
 
     if (rs == nullptr) {
@@ -211,19 +211,24 @@ result_t rstack_front(rstack_t *rs) {
 
         if (!current->is_stack) {
             result = result_new(current);
-            reset_visited(rs);
             return result;
         }
 
-        const result_t temp_result = rstack_front(current->value.stack_value);
-        if (temp_result.flag == true) {
-            reset_visited(rs);
+        const result_t temp_result = rstack_front_helper(current->value.stack_value);
+        if (temp_result.flag) {
             return temp_result;
         }
+
         current = current->next;
     }
 
+    return result;
+}
+
+result_t rstack_front(rstack_t *rs) {
+    const result_t result = rstack_front_helper(rs);
     reset_visited(rs);
+
     return result;
 }
 
@@ -432,269 +437,4 @@ int rstack_write(char const *path, rstack_t *rs) {
     }
 
     return FUNCTION_SUCCESS;
-}
-
-
-#ifndef TEST_MACROS
-#define TEST_MACROS
-
-#include <inttypes.h>
-#include <stdio.h> // IWYU pragma: keep (this stops clangd from reporting this include as unnecessary)
-
-#define PASS 0
-#define FAIL 1
-
-#define OUTPUT_FILE "test.fout"
-
-#define REPORT(...)                                                            \
-    do {                                                                       \
-        fprintf(stderr, "%s:%d (%s): ", __FILE__, __LINE__, __func__);         \
-        fprintf(stderr, __VA_ARGS__);                                          \
-        fprintf(stderr, "\n");                                                 \
-    } while (0)
-
-#define SIZE(x) (sizeof x / sizeof x[0])
-
-#define ASSERT(f)                                                              \
-    do {                                                                       \
-        if (!(f)) {                                                            \
-            REPORT("Assertion failed: %s", #f);                                \
-            return FAIL;                                                       \
-        }                                                                      \
-    } while (0)
-
-// If __VA_ARGS__ has a value, use it. Otherwise, fallback to 0.
-#define GET_EXPECTED(...) __VA_OPT__(__VA_ARGS__) __VA_OPT__(+) 0UL
-
-#define ASSERT_RESULT(c, f, ...)                                               \
-    do {                                                                       \
-        result_t r = c;                                                        \
-        if (r.flag != (f)) {                                                   \
-            REPORT("Result assertion failed, %s.flag is \"%s\" but should be " \
-                   "\"%s\".",                                                  \
-                   #c,                                                         \
-                   r.flag ? "true" : "false",                                  \
-                   #f);                                                        \
-            return FAIL;                                                       \
-        }                                                                      \
-        if ((f) && r.value != __VA_ARGS__ - 0) {                               \
-            REPORT("Result assertion failed, %s.value is %" PRIu64             \
-                   " but should be %" PRIu64 ".",                              \
-                   #c,                                                         \
-                   r.value,                                                    \
-                   GET_EXPECTED());                                            \
-            return FAIL;                                                       \
-        }                                                                      \
-    } while (0)
-
-#define NO_ERROR(f)                                                            \
-    do {                                                                       \
-        if ((f) != 0) {                                                        \
-            REPORT(                                                            \
-              "Expected %s to exit with no error but it returned %d", #f, f);  \
-            return FAIL;                                                       \
-        }                                                                      \
-    } while (0)
-#define CHECK_IF_NO_ERROR(f) NO_ERROR(f);
-
-#define PRINT_U64(v) printf("%" PRIu64 "\n", v);
-
-#define TEST_FILE(name) "test_" name ".fout"
-
-#endif // TEST_MACROS
-#include <assert.h>
-
-int main(void) {
-    rstack_t* rs0 = rstack_new();
-    rstack_t* rs1 = rstack_new();
-    rstack_t* rs2 = rstack_new();
-    rstack_t* rs3 = rstack_new();
-    rstack_t* rs4 = rstack_new();
-    rstack_t* rs5 = rstack_new();
-    rstack_t* rs6 = rstack_new();
-    rstack_t* rs7 = rstack_new();
-    rstack_t* rs8 = rstack_new();
-    rstack_t* rs9 = rstack_new();
-    NO_ERROR(rstack_push_rstack(rs3, rs6));
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    ASSERT(rstack_empty(rs4) == true);
-    NO_ERROR(rstack_push_rstack(rs6, rs1));
-    NO_ERROR(rstack_push_rstack(rs4, rs0));
-    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs6, rs0));
-    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
-    NO_ERROR(rstack_write("test_16.fout", rs9));
-    ASSERT_RESULT(rstack_front(rs9), false, 0UL);
-    NO_ERROR(rstack_write("test_12.fout", rs6));
-    ASSERT(rstack_empty(rs8) == true);
-    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs3, rs1));
-    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    NO_ERROR(rstack_write("test_1.fout", rs6));
-    ASSERT(rstack_empty(rs4) == true);
-    NO_ERROR(rstack_write("test_14.fout", rs6));
-    NO_ERROR(rstack_write("test_19.fout", rs0));
-    NO_ERROR(rstack_push_rstack(rs7, rs9));
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs0, rs3));
-    NO_ERROR(rstack_push_rstack(rs1, rs9));
-    ASSERT(rstack_empty(rs9) == true);
-    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs0, rs4));
-    NO_ERROR(rstack_push_rstack(rs1, rs1));
-    NO_ERROR(rstack_write("test_13.fout", rs8));
-    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs0, rs9));
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    ASSERT(rstack_empty(rs2) == true);
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
-    ASSERT(rstack_empty(rs6) == true);
-    NO_ERROR(rstack_push_rstack(rs3, rs6));
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    NO_ERROR(rstack_write("test_10.fout", rs9));
-    ASSERT_RESULT(rstack_front(rs8), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs8, rs5));
-    NO_ERROR(rstack_push_rstack(rs6, rs2));
-    ASSERT(rstack_empty(rs5) == true);
-    NO_ERROR(rstack_push_rstack(rs8, rs9));
-    NO_ERROR(rstack_push_rstack(rs9, rs4));
-    NO_ERROR(rstack_push_rstack(rs7, rs7));
-    NO_ERROR(rstack_write("test_2.fout", rs9));
-    NO_ERROR(rstack_write("test_15.fout", rs7));
-    NO_ERROR(rstack_write("test_18.fout", rs4));
-    NO_ERROR(rstack_push_rstack(rs9, rs3));
-    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs7, rs4));
-    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs1, rs9));
-    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
-    NO_ERROR(rstack_write("test_0.fout", rs1));
-    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs4, rs7));
-    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs0, rs4));
-    ASSERT(rstack_empty(rs2) == true);
-    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
-    ASSERT(rstack_empty(rs4) == true);
-    NO_ERROR(rstack_push_rstack(rs9, rs6));
-    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs7, rs5));
-    NO_ERROR(rstack_push_rstack(rs5, rs1));
-    ASSERT(rstack_empty(rs5) == true);
-    NO_ERROR(rstack_write("test_9.fout", rs2));
-    ASSERT_RESULT(rstack_front(rs4), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs7, rs7));
-    ASSERT(rstack_empty(rs7) == true);
-    NO_ERROR(rstack_write("test_8.fout", rs9));
-    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
-    ASSERT(rstack_empty(rs7) == true);
-    NO_ERROR(rstack_write("test_5.fout", rs6));
-    ASSERT(rstack_empty(rs5) == true);
-    NO_ERROR(rstack_push_rstack(rs3, rs1));
-    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
-    NO_ERROR(rstack_write("test_17.fout", rs4));
-    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs3, rs5));
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs5, rs8));
-    ASSERT(rstack_empty(rs2) == true);
-    ASSERT_RESULT(rstack_front(rs5), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    NO_ERROR(rstack_write("test_6.fout", rs4));
-    ASSERT(rstack_empty(rs2) == true);
-    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
-    ASSERT(rstack_empty(rs9) == true);
-    ASSERT(rstack_empty(rs5) == true);
-    ASSERT(rstack_empty(rs9) == true);
-    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
-    NO_ERROR(rstack_write("test_4.fout", rs8));
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs2, rs5));
-    NO_ERROR(rstack_push_rstack(rs0, rs0));
-    NO_ERROR(rstack_push_rstack(rs3, rs7));
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    ASSERT(rstack_empty(rs1) == true);
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
-    ASSERT(rstack_empty(rs0) == true);
-    NO_ERROR(rstack_push_rstack(rs1, rs7));
-    NO_ERROR(rstack_push_rstack(rs9, rs0));
-    NO_ERROR(rstack_push_rstack(rs4, rs1));
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs4, rs0));
-    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs5, rs8));
-    ASSERT_RESULT(rstack_front(rs5), false, 0UL);
-    ASSERT(rstack_empty(rs4) == true);
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    ASSERT(rstack_empty(rs4) == true);
-    NO_ERROR(rstack_push_rstack(rs2, rs8));
-    ASSERT_RESULT(rstack_front(rs5), false, 0UL);
-    ASSERT(rstack_empty(rs1) == true);
-    NO_ERROR(rstack_push_rstack(rs4, rs8));
-    NO_ERROR(rstack_write("test_7.fout", rs9));
-    ASSERT_RESULT(rstack_front(rs9), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs2), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs4, rs0));
-    NO_ERROR(rstack_push_rstack(rs6, rs4));
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs4, rs9));
-    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
-    ASSERT(rstack_empty(rs9) == true);
-    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
-    ASSERT(rstack_empty(rs4) == true);
-    ASSERT(rstack_empty(rs4) == true);
-    NO_ERROR(rstack_push_rstack(rs8, rs3));
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    ASSERT(rstack_empty(rs9) == true);
-    ASSERT_RESULT(rstack_front(rs9), false, 0UL);
-    NO_ERROR(rstack_write("test_3.fout", rs9));
-    ASSERT_RESULT(rstack_front(rs0), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs3), false, 0UL);
-    ASSERT(rstack_empty(rs6) == true);
-    NO_ERROR(rstack_push_rstack(rs6, rs7));
-    ASSERT(rstack_empty(rs8) == true);
-    NO_ERROR(rstack_push_rstack(rs3, rs2));
-    ASSERT_RESULT(rstack_front(rs7), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs9), false, 0UL);
-    ASSERT_RESULT(rstack_front(rs6), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs7, rs4));
-    ASSERT_RESULT(rstack_front(rs1), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs6, rs9));
-    NO_ERROR(rstack_push_rstack(rs1, rs2));
-    ASSERT(rstack_empty(rs1) == true);
-    NO_ERROR(rstack_write("test_11.fout", rs1));
-    NO_ERROR(rstack_push_rstack(rs9, rs0));
-    ASSERT(rstack_empty(rs5) == true);
-    ASSERT(rstack_empty(rs3) == true);
-    ASSERT(rstack_empty(rs5) == true);
-    ASSERT_RESULT(rstack_front(rs5), false, 0UL);
-    NO_ERROR(rstack_push_rstack(rs2, rs3));
-    ASSERT(rstack_empty(rs9) == true);
-    rstack_delete(rs0);
-    rstack_delete(rs1);
-    rstack_delete(rs2);
-    rstack_delete(rs3);
-    rstack_delete(rs4);
-    rstack_delete(rs5);
-    rstack_delete(rs6);
-    rstack_delete(rs7);
-    rstack_delete(rs8);
-    rstack_delete(rs9);
-
-        return PASS;
 }
