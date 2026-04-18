@@ -74,6 +74,8 @@ void rstack_delete(rstack_t *rs) {
         return;
     }
 
+    // Jesli licznik referencji spadnie do 0,
+    // stos zostanie usuniety przez garbage collector.
     rs->ref_count--;
     gc_mark_and_sweep(global_garbage_collector);
 }
