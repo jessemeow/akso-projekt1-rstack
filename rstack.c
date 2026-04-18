@@ -166,6 +166,8 @@ static bool rstack_empty_helper(const rstack_t *rs) {
             return false;
         }
 
+        // Pomijamy odwiedzone wezly, aby zapobiec
+        // wpadnieciu w nieskonczony cykl.
         if (!current->is_visited) {
             current->is_visited = true;
 
@@ -245,7 +247,16 @@ static bool is_digit(const int character) {
 }
 
 static bool in_uint64_range(const uint64_t number, const uint64_t new_digit) {
+    // Rownanie przeksztalcone w celu unikniecia przepelnienia typu.
     return number <= (UINT64_MAX - new_digit) / 10;
+}
+
+uint64_t character_to_digit(const int character) {
+    return character - '0';
+}
+
+uint64_t append_digit_to_number(const uint64_t number, const uint64_t digit) {
+    return (number * 10) + digit;
 }
 
 static result_t read_number_from_file(FILE *file_ptr) {
@@ -258,15 +269,15 @@ static result_t read_number_from_file(FILE *file_ptr) {
     int character = fgetc(file_ptr);
 
     while (character != EOF && result.flag && is_digit(character)) {
-        const uint64_t digit = character - '0';
+        const uint64_t digit = character_to_digit(character);
 
         if (!in_uint64_range(number_result, digit)) {
             result.flag = false;
             errno = ERANGE;
         }
         else {
-            number_result *= 10;
-            number_result += digit;
+            number_result =
+                append_digit_to_number(number_result, digit);
             character = fgetc(file_ptr);
         }
     }
@@ -382,7 +393,7 @@ static int print_num_to_file(FILE *file_ptr, const uint64_t num) {
 
 static int rstack_write_to_file(FILE *file_ptr, rstack_node_t *node);
 
-static int rstack_write_nested_stack(FILE *file_ptr, rstack_t *nested_rs) {
+static int rstack_write_nested_stack(FILE *file_ptr, const rstack_t *nested_rs) {
     if (nested_rs == nullptr || nested_rs->head == nullptr) {
         return FUNCTION_SUCCESS;
     }

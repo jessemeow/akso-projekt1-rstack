@@ -31,7 +31,6 @@ typedef struct rstack {
     uint64_t internal_ref_count;
 } rstack_t;
 
-// todo: handle errors??
 static garbage_collector_node_t *gc_new_node(rstack_t *rs) {
     if (rs == nullptr) {
         errno = EINVAL;
@@ -77,6 +76,10 @@ static bool rstack_is_root(const rstack_t *rs) {
         return false;
     }
 
+    // Stos jest korzeniem, jesli suma wszystkich referencji
+    // do niego jest wieksza niz liczba referencji pochodzacych
+    // z wnetrza samego systemu stosow.
+    // Gwarantuje to ominiecie "zamknietych" cykli.
     return (rs->ref_count > rs->internal_ref_count);
 }
 
@@ -145,6 +148,7 @@ static void gc_find_reachable(const garbage_collector_t *gc) {
 
     const garbage_collector_node_t *current = gc->head;
 
+    // Przeszukiwanie grafu zaczynajac tylko od korzeni.
     while (current != nullptr) {
         if (current->is_root) {
             rstack_set_reachable(current->node);
@@ -200,6 +204,9 @@ static void gc_rstack_cleaner(const garbage_collector_t *gc) {
 
     const garbage_collector_node_t *current = gc->head;
 
+    // Faza 1: "Wypruwanie" wezlow z nieosiagalnych stosow bez
+    // wywolania free na glownych strukturach stosow,
+    // bezpiecznie rozrywajac cykle bez bledu use-after-free.
     while (current != nullptr) {
         const rstack_t *rs = current->node;
 
@@ -243,6 +250,8 @@ static void gc_rstack_removal(garbage_collector_t *gc) {
     garbage_collector_node_t *current = gc->head;
     garbage_collector_node_t *previous = nullptr;
 
+    // Faza 2: Niszczenie ostatecznych "skorup" po nieosiagalnych
+    // stosach, ktore zostaly juz bezpiecznie rozlaczone w fazie 1.
     while (current != nullptr) {
         const rstack_t *rs = current->node;
 
