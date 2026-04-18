@@ -208,7 +208,7 @@ static result_t result_new(const rstack_node_t *node) {
 static result_t rstack_front_helper(const rstack_t *rs) {
     result_t result = result_new_empty();
 
-    if (rs == nullptr) {
+    if (rs == nullptr) { // todo - OR is visited?
         return result;
     }
 
