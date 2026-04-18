@@ -76,8 +76,7 @@ void rstack_delete(rstack_t *rs) {
 
     // Zmniejszamy licznik ref. zewnetrznych
     // i delegujemy sprzatanie do GC,
-    // aby bezpiecznie obsluzyc cykle
-    // i wspoldzielone stosy.
+    // aby bezpiecznie obsluzyc cykle i wspoldzielone stosy.
     rs->ref_count--;
     gc_mark_and_sweep(global_garbage_collector);
 }
@@ -143,13 +142,7 @@ void rstack_pop(rstack_t *rs) {
     }
 
     rstack_node_t *node_to_be_deleted = rs->head;
-    rstack_node_t *next_node = node_to_be_deleted->next;
-
-    if (node_to_be_deleted == next_node) {
-        next_node = nullptr;
-    }
-
-    rs->head = next_node;
+    rs->head = node_to_be_deleted->next;
 
     if (node_to_be_deleted->is_stack) {
         rstack_pop_substack(node_to_be_deleted->value.stack_value);
