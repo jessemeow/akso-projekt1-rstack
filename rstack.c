@@ -302,7 +302,6 @@ static void skip_whitespace(FILE *file_ptr, int *character) {
 
 static int process_number(FILE *file_ptr, rstack_t *rs, int *character) {
     if (ungetc(*character, file_ptr) == EOF) {
-        errno = EIO;
         return FUNCTION_FAIL;
     }
 
@@ -355,24 +354,35 @@ rstack_t *rstack_read(char const *path) {
 
     FILE *file_ptr = fopen(path, "r");
     if (file_ptr == nullptr) {
-        errno = ENOENT;
         return nullptr;
     }
 
     rstack_t *rs = rstack_new();
     if (rs == nullptr) {
+        const int saved_errno = errno;
+
         fclose(file_ptr);
+
+        errno = saved_errno;
         return nullptr;
     }
 
     if (rstack_read_file(file_ptr, rs) == FUNCTION_FAIL) {
+        const int saved_errno = errno;
+
         fclose(file_ptr);
         rstack_delete(rs);
+
+        errno = saved_errno;
         return nullptr;
     }
 
     if (fclose(file_ptr) != FUNCTION_SUCCESS) {
+        const int saved_errno = errno;
+
         rstack_delete(rs);
+
+        errno = saved_errno;
         return nullptr;
     }
 
@@ -381,7 +391,6 @@ rstack_t *rstack_read(char const *path) {
 
 static int print_num_to_file(FILE *file_ptr, const uint64_t num) {
     if (fprintf(file_ptr, "%lu\n", num) < FUNCTION_SUCCESS) {
-        errno = EIO;
         return FUNCTION_FAIL;
     }
 
@@ -404,7 +413,7 @@ static int rstack_write_to_file(FILE *file_ptr, rstack_node_t *node) {
     }
 
     if (file_ptr == nullptr) {
-        errno = ENOENT;
+        errno = EINVAL;
         return FUNCTION_FAIL;
     }
 
@@ -445,13 +454,12 @@ int rstack_write(char const *path, rstack_t *rs) {
     }
 
     if (path == nullptr) {
-        errno = ENOENT;
+        errno = EINVAL;
         return FUNCTION_FAIL;
     }
 
     FILE *file_ptr = fopen(path, "w");
     if (file_ptr == nullptr) {
-        errno = ENOENT;
         return FUNCTION_FAIL;
     }
 
@@ -461,7 +469,11 @@ int rstack_write(char const *path, rstack_t *rs) {
     reset_visited(rs);
 
     if (function_result == FUNCTION_FAIL) {
+        const int saved_errno = errno;
+
         fclose(file_ptr);
+
+        errno = saved_errno;
         return FUNCTION_FAIL;
     }
 
