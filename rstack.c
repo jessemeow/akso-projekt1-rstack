@@ -95,6 +95,7 @@ int rstack_push_value(rstack_t *rs, uint64_t value) {
     new_node->value.num_value = value;
     new_node->next = rs->head;
     rs->head = new_node;
+
     return FUNCTION_SUCCESS;
 }
 
@@ -208,7 +209,7 @@ static result_t result_new(const rstack_node_t *node) {
 static result_t rstack_front_helper(const rstack_t *rs) {
     result_t result = result_new_empty();
 
-    if (rs == nullptr) { // todo - OR is visited?
+    if (rs == nullptr) {
         return result;
     }
 
@@ -222,7 +223,7 @@ static result_t rstack_front_helper(const rstack_t *rs) {
             return result;
         }
 
-        result = rstack_front_helper(current->value.stack_value); // todo: check ok
+        result = rstack_front_helper(current->value.stack_value);
         if (result.flag) {
             return result;
         }
@@ -313,7 +314,7 @@ static int process_number(FILE *file_ptr, rstack_t *rs, int *character) {
     return FUNCTION_SUCCESS;
 }
 
-static int rstack_read_helper(FILE *file_ptr, rstack_t *rs) {
+static int rstack_read_file(FILE *file_ptr, rstack_t *rs) {
     if (file_ptr == nullptr || rs == nullptr) {
         return FUNCTION_FAIL;
     }
@@ -356,7 +357,7 @@ rstack_t *rstack_read(char const *path) {
         return nullptr;
     }
 
-    if (rstack_read_helper(file_ptr, rs) == FUNCTION_FAIL) {
+    if (rstack_read_file(file_ptr, rs) == FUNCTION_FAIL) {
         fclose(file_ptr);
         rstack_delete(rs);
         return nullptr;
@@ -371,7 +372,7 @@ rstack_t *rstack_read(char const *path) {
 }
 
 static int print_num_to_file(FILE *file_ptr, const uint64_t num) {
-    if (fprintf(file_ptr, "%lu\n", num) < 0) {
+    if (fprintf(file_ptr, "%lu\n", num) < FUNCTION_SUCCESS) {
         errno = EIO;
         return FUNCTION_FAIL;
     }
@@ -379,17 +380,17 @@ static int print_num_to_file(FILE *file_ptr, const uint64_t num) {
     return FUNCTION_SUCCESS;
 }
 
-static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node);
+static int rstack_write_to_file(FILE *file_ptr, rstack_node_t *node);
 
 static int rstack_write_nested_stack(FILE *file_ptr, rstack_t *nested_rs) {
     if (nested_rs == nullptr || nested_rs->head == nullptr) {
         return FUNCTION_SUCCESS;
     }
 
-    return rstack_write_helper(file_ptr, nested_rs->head);
+    return rstack_write_to_file(file_ptr, nested_rs->head);
 }
 
-static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
+static int rstack_write_to_file(FILE *file_ptr, rstack_node_t *node) {
     if (node == nullptr) {
         return FUNCTION_SUCCESS;
     }
@@ -403,7 +404,8 @@ static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
         return CYCLE_DETECTED;
     }
 
-    int function_result = rstack_write_helper(file_ptr, node->next);
+    int function_result =
+        rstack_write_to_file(file_ptr, node->next);
     if (function_result != FUNCTION_SUCCESS) {
         return function_result;
     }
@@ -411,10 +413,12 @@ static int rstack_write_helper(FILE *file_ptr, rstack_node_t *node) {
     node->is_visited = true;
 
     if (node->is_stack) {
-        function_result = rstack_write_nested_stack(file_ptr, node->value.stack_value);
+        function_result =
+            rstack_write_nested_stack(file_ptr, node->value.stack_value);
     }
     else {
-        function_result = print_num_to_file(file_ptr, node->value.num_value);
+        function_result =
+            print_num_to_file(file_ptr, node->value.num_value);
     }
 
     if (function_result != FUNCTION_SUCCESS) {
@@ -443,7 +447,8 @@ int rstack_write(char const *path, rstack_t *rs) {
         return FUNCTION_FAIL;
     }
 
-    const int function_result = rstack_write_helper(file_ptr, rs->head);
+    const int function_result =
+        rstack_write_to_file(file_ptr, rs->head);
 
     reset_visited(rs);
 
