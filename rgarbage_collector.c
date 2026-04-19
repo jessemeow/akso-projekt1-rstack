@@ -88,6 +88,8 @@ static void gc_reset(const garbage_collector_t *gc) {
         return;
     }
 
+    // KROK 0: Czyscimy flagi w calym grafie przed nowym
+    // cyklem mark & sweep.
     garbage_collector_node_t *current = gc->head;
 
     while (current != nullptr) {
@@ -110,6 +112,9 @@ static void gc_find_roots(const garbage_collector_t *gc) {
 
     garbage_collector_node_t *current = gc->head;
 
+    // KROK 1: Iterujac po wszystkich znanych stosach
+    // oznaczamy te, do ktorych wciaz prowadza wskazniki
+    // od uzytkownika.
     while (current != nullptr) {
         const rstack_t *rs = current->node;
 
@@ -130,6 +135,8 @@ static void rstack_set_reachable(rstack_t *rs) {
 
     const rstack_node_t *current = rs->head;
 
+    // Rekurencyjnie oznaczamy zagniezdzone stosy jako
+    // bezpieczne przed usunieciem.
     while (current != nullptr) {
         if (current->is_stack &&
             current->value.stack_value != nullptr &&
@@ -148,7 +155,7 @@ static void gc_find_reachable(const garbage_collector_t *gc) {
 
     const garbage_collector_node_t *current = gc->head;
 
-    // Przeszukiwanie grafu zaczynajac tylko od korzeni.
+    // KROK 2: Przeszukiwanie grafu zaczynajac tylko od korzeni.
     while (current != nullptr) {
         if (current->is_root) {
             rstack_set_reachable(current->node);
@@ -174,6 +181,8 @@ static void rstack_cleaner(rstack_t *rs) {
 
     rstack_node_t *current = rs->head;
 
+    // Oprozniamy zawartosci odcietego stosu,
+    // lamiac potencjalne cykle.
     while (current != nullptr) {
         if (current->is_stack &&
             current->value.stack_value != nullptr) {
@@ -204,7 +213,7 @@ static void gc_rstack_cleaner(const garbage_collector_t *gc) {
 
     const garbage_collector_node_t *current = gc->head;
 
-    // Faza 1: "Wypruwanie" wezlow z nieosiagalnych stosow bez
+    // KROK 3: "Wypruwanie" wezlow z nieosiagalnych stosow bez
     // wywolania free na glownych strukturach stosow,
     // bezpiecznie rozrywajac cykle bez bledu use-after-free.
     while (current != nullptr) {
@@ -250,8 +259,8 @@ static void gc_rstack_removal(garbage_collector_t *gc) {
     garbage_collector_node_t *current = gc->head;
     garbage_collector_node_t *previous = nullptr;
 
-    // Faza 2: Niszczenie ostatecznych "skorup" po nieosiagalnych
-    // stosach, ktore zostaly juz bezpiecznie rozlaczone w fazie 1.
+    // KROK 4: Niszczenie ostatecznych "skorup" po nieosiagalnych
+    // stosach, ktore zostaly juz wczesniej bezpiecznie rozlaczone.
     while (current != nullptr) {
         const rstack_t *rs = current->node;
 

@@ -20,7 +20,7 @@ typedef struct rstack_node {
 } rstack_node_t;
 
 typedef struct rstack {
-    bool reachable;
+    bool reachable; // Flaga dla garbage collectora.
     rstack_node_t *head;
     uint64_t ref_count;
     uint64_t internal_ref_count;
@@ -28,6 +28,11 @@ typedef struct rstack {
 
 extern garbage_collector_t *global_garbage_collector;
 
+/**
+ * @return Wskaznik na utworzony stos w przypadku sukcesu.
+ * @return nullptr w przypadku bledu braku pamieci
+ * przy alokacji lub rejestracji w garbage collectorze (ENOMEM).
+ */
 rstack_t *rstack_new() {
     rstack_t *rstack = (rstack_t *) malloc(sizeof(rstack_t));
 
@@ -56,6 +61,8 @@ static void reset_visited(const rstack_t *rs) {
 
     rstack_node_t *current = rs->head;
 
+    // Czyscimy flagi odwiedzin po przejsciu grafu,
+    // aby kolejne funkcje zaczynaly z czysta karta.
     while (current != nullptr) {
         if (current->is_visited) {
             current->is_visited = false;
@@ -69,6 +76,11 @@ static void reset_visited(const rstack_t *rs) {
     }
 }
 
+/**
+ * @brief Zglasza stos do usuniecia garbage collectorowi.
+ * @param rs Wskaznik na stos do usuniecia
+ * (bezpiecznie ignoruje nullptr).
+ */
 void rstack_delete(rstack_t *rs) {
     if (rs == nullptr) {
         return;
@@ -81,6 +93,13 @@ void rstack_delete(rstack_t *rs) {
     gc_mark_and_sweep(global_garbage_collector);
 }
 
+/**
+ * @param rs Wskaznik na stos docelowy.
+ * @param value Wartosc liczbowa do odlozenia na stos.
+ * @return FUNCTION_SUCCESS po pomyslnym dodaniu.
+ * @return FUNCTION_FAIL jezeli rs to nullptr (EINVAL)
+ * lub brakuje pamieci na nowy wezel (ENOMEM).
+ */
 int rstack_push_value(rstack_t *rs, uint64_t value) {
     if (rs == nullptr) {
         errno = EINVAL;
@@ -102,6 +121,13 @@ int rstack_push_value(rstack_t *rs, uint64_t value) {
     return FUNCTION_SUCCESS;
 }
 
+/**
+ * @param rs1 Stos docelowy, na ktory odkladamy.
+ * @param rs2 Stos odkladany na wierzcholek rs1.
+ * @return FUNCTION_SUCCESS po pomyslnym powiazaniu.
+ * @return FUNCTION_FAIL jezeli rs to nullptr (EINVAL)
+ * lub brakuje pamieci na nowy wezel (ENOMEM).
+ */
 int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
     if (rs1 == nullptr || rs2 == nullptr) {
         errno = EINVAL;
@@ -136,6 +162,10 @@ static void rstack_pop_substack(rstack_t *stack_to_be_deleted) {
     rstack_delete(stack_to_be_deleted);
 }
 
+/**
+ * @param rs Wskaznik na stos (bezpiecznie ignoruje
+ * nullptr oraz puste stosy).
+ */
 void rstack_pop(rstack_t *rs) {
     if (rs == nullptr || rs->head == nullptr) {
         return;
@@ -179,6 +209,13 @@ static bool rstack_empty_helper(const rstack_t *rs) {
     return true;
 }
 
+/**
+ * @brief Sprawdza, czy na stosie jest OSIAGALNA wartosc liczbowa.
+ * @param rs Wskaznik na badany stos.
+ * @return true jesli stos nie zawiera zadnych wartosci liczbowych,
+ * sa one nieosiagalne przez cykl na stosie lub wartosc rs to nullptr.
+ * @return false jesli znaleziono przynajmniej jedna liczbe.
+ */
 bool rstack_empty(rstack_t *rs) {
     const bool result = rstack_empty_helper(rs);
     reset_visited(rs);
@@ -214,6 +251,7 @@ static result_t rstack_front_helper(const rstack_t *rs) {
 
     rstack_node_t *current = rs->head;
 
+    // Przerywamy szukanie przy wykryciu cyklu.
     while (current != nullptr && !current->is_visited) {
         current->is_visited = true;
 
@@ -233,6 +271,14 @@ static result_t rstack_front_helper(const rstack_t *rs) {
     return result;
 }
 
+/**
+ * @brief Pobiera pierwsza OSIAGALNA wartosc liczbowa
+ * z wierzcholka stosu.
+ * @param rs Wskaznik na przeszukiwany stos.
+ * @return result_t z flaga true, jezeli taka wartosc istnieje,
+ * oraz polem value zawierajacym znaleziona liczbe.
+ * @return result_t z flaga false w przeciwnym razie.
+ */
 result_t rstack_front(rstack_t *rs) {
     const result_t result = rstack_front_helper(rs);
     reset_visited(rs);
@@ -248,11 +294,11 @@ static bool in_uint64_range(const uint64_t number, const uint64_t new_digit) {
     return number <= (UINT64_MAX - new_digit) / 10;
 }
 
-uint64_t character_to_digit(const int character) {
+static uint64_t character_to_digit(const int character) {
     return character - '0';
 }
 
-uint64_t append_digit_to_number(const uint64_t number, const uint64_t digit) {
+static uint64_t append_digit_to_number(const uint64_t number, const uint64_t digit) {
     return (number * 10) + digit;
 }
 
@@ -301,6 +347,9 @@ static void skip_whitespace(FILE *file_ptr, int *character) {
 }
 
 static int process_number(FILE *file_ptr, rstack_t *rs, int *character) {
+    // Cofamy znak do strumienia, aby funkcja read_number_from_file
+    // mogla przeparsowac cala liczbe od poczatku,
+    // wlacznie z pierwszym znakiem.
     if (ungetc(*character, file_ptr) == EOF) {
         return FUNCTION_FAIL;
     }
@@ -346,6 +395,16 @@ static int rstack_read_file(FILE *file_ptr, rstack_t *rs) {
     return FUNCTION_SUCCESS;
 }
 
+/**
+ * @brief Tworzy nowy stos na podstawie danych z pliku tekstowego.
+ * Czyta liczby ciagiem, ignorujac biale znaki.
+ *
+ * @param path Sciezka do odczytywanego pliku.
+ * @return Wskaznik na gotowy stos w przypadku pelnego sukcesu.
+ * @return nullptr w przypadku bledow (I/O, parsowania,
+ * przepenienia uint64_t, nieprawidlowych znakow).
+ * Odpowiednio modyfikuje errno.
+ */
 rstack_t *rstack_read(char const *path) {
     if (path == nullptr) {
         errno = EINVAL;
@@ -359,6 +418,7 @@ rstack_t *rstack_read(char const *path) {
 
     rstack_t *rs = rstack_new();
     if (rs == nullptr) {
+        // Zabezpieczamy przed nadpisaniem errno.
         const int saved_errno = errno;
 
         fclose(file_ptr);
@@ -418,6 +478,7 @@ static int rstack_write_to_file(FILE *file_ptr, rstack_node_t *node) {
     }
 
     if (node->is_visited) {
+        // Przerywamy rekurencyjny zapis.
         return CYCLE_DETECTED;
     }
 
@@ -447,6 +508,18 @@ static int rstack_write_to_file(FILE *file_ptr, rstack_node_t *node) {
     return FUNCTION_SUCCESS;
 }
 
+/**
+ * @brief Wypisuje zawartosc stosu do pliku
+ * w kolejnosci od DNA stosu,
+ * przerywajac dzialanie przy napotkaniu cyklu.
+ *
+ * @param path Sciezka do pliku docelowego (plik zostanie nadpisany).
+ * @param rs Wskaznik do stosu, ktory ma zostac zapisany.
+ * @return FUNCTION_SUCCESS jezeli zapis zakonczyl sie bez problemow.
+ * @return FUNCTION_FAIL jezeli chociaz jeden argument ma wartosc NULLPPR,
+ * wystapi problem z IO, lub z pamiecia.
+ * Odpowiednio modyfikuje errno.
+ */
 int rstack_write(char const *path, rstack_t *rs) {
     if (rs == nullptr) {
         errno = EINVAL;
@@ -469,6 +542,7 @@ int rstack_write(char const *path, rstack_t *rs) {
     reset_visited(rs);
 
     if (function_result == FUNCTION_FAIL) {
+        // Zabezpieczamy przed nadpisaniem errno.
         const int saved_errno = errno;
 
         fclose(file_ptr);
